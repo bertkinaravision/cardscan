@@ -232,3 +232,20 @@ fake.faults.appendDelayMs = 0;
 assert.deepEqual(twice.map((r) => r.duplicate).sort(), [false, true], "the later save reports a duplicate");
 assert.equal((await listContacts()).filter((c) => c.id === "d1").length, 1, "one row kept");
 console.log("Double save test passed.");
+
+// 17. Deleting empties the row (rows never move), so an edit running at the same moment stays on its contact.
+await appendContact(row("x1", { first_name: "Xa" }));
+await appendContact(row("x2", { first_name: "Xb" }));
+await appendContact(row("x3", { first_name: "Xc" }));
+fake.faults.sheetsDelayMs = 100;
+await Promise.all([deleteContactRow("x1"), deleteContactRow("x1"), updateContact("x2", { notes: "edit for Xb" })]);
+fake.faults.sheetsDelayMs = 0;
+const left17 = await listContacts();
+assert.equal(left17.find((c) => c.id === "x2")?.notes, "edit for Xb", "edit landed on its own contact");
+assert.equal(left17.find((c) => c.id === "x3")?.notes, "", "neighbour untouched");
+assert.ok(!left17.some((c) => c.id === "x1") && left17.some((c) => c.id === "x3"), "double delete removed only x1");
+await appendContact(row("x4", { first_name: "Xd" }));
+const tab17 = ops.tab("Contacts");
+const filled17 = tab17.rows.filter((r: string[]) => r.some(Boolean));
+assert.ok(filled17.at(-1).includes("x4"), "new contact added below every existing contact");
+console.log("Delete and concurrent edit tests passed.");

@@ -29,7 +29,15 @@ export const headerKey = (h: string): SheetColumn | null => HEADER_NAMES.get(squ
 
 // headers: the header row as written; keys: which of our columns each one is (null = a column of your own).
 // headerRow: the header row's number (1 unless someone added rows above it, such as a title).
-export type SheetInfo = { sheetId: number; title: string; headerRow: number; headers: string[]; keys: (SheetColumn | null)[] };
+// lastRow: the last row with anything in it (known once the rows have been read).
+export type SheetInfo = {
+  sheetId: number;
+  title: string;
+  headerRow: number;
+  headers: string[];
+  keys: (SheetColumn | null)[];
+  lastRow?: number;
+};
 
 // Bump when the formatting applied to the tab changes, so existing Sheets get it once too.
 const SETUP_VERSION = "2";
@@ -258,7 +266,8 @@ async function readAll(): Promise<{ info: SheetInfo; rows: { rowNumber: number; 
     range: `${quoted(info.title)}!A${info.headerRow + 1}:${columnLetter(info.headers.length - 1)}`,
   });
   const rows = (res.data.values ?? []).map((v, i) => ({ rowNumber: i + info.headerRow + 1, values: v.map(String) }));
-  return { info, rows };
+  const filled = rows.filter((r) => r.values.some(Boolean));
+  return { info: { ...info, lastRow: filled.at(-1)?.rowNumber ?? info.headerRow }, rows };
 }
 
 export async function listContacts(): Promise<ContactRow[]> {
@@ -276,12 +285,14 @@ export async function listContactsWithLayout(): Promise<{ contacts: ContactRow[]
 // was still running on bad Wi-Fi), both rows land. The later one then clears its own row and
 // reports `duplicate`, so exactly one row is kept.
 export async function appendContact(row: ContactRow, layout?: SheetInfo): Promise<{ duplicate: boolean }> {
-  const info = layout ?? (await ensureSheet());
+  const info = layout?.lastRow ? layout : (await readAll()).info;
   const sheets = sheetsClient();
   const spreadsheetId = requireEnv("SHEET_ID");
   const res = await sheets.spreadsheets.values.append({
     spreadsheetId,
-    range: `${quoted(info.title)}!A${info.headerRow}`,
+    // Starting at the last filled row, Google adds the row at the very bottom, even when there are
+    // empty rows higher up, so no existing row ever moves (edits elsewhere stay on the right row).
+    range: `${quoted(info.title)}!A${info.lastRow}`,
     // RAW so text from a card can never be run as a Sheets formula.
     valueInputOption: "RAW",
     insertDataOption: "INSERT_ROWS",
@@ -342,21 +353,16 @@ export async function updateContact(id: string, patch: Partial<ContactRow>): Pro
   return { ...toRow(info.keys, found.values), ...changes, id } as ContactRow;
 }
 
+// Empties the contact's row rather than removing it: removing a row moves every row below it up,
+// and an edit or delete running at the same moment could then land on the wrong contact.
+// The empty row is skipped when reading; it can be removed by hand in the Sheet any time.
 export async function deleteContactRow(id: string): Promise<ContactRow | null> {
   const loc = await locate(id);
   if (!loc) return null;
   const { info, found } = loc;
-  await sheetsClient().spreadsheets.batchUpdate({
+  await sheetsClient().spreadsheets.values.clear({
     spreadsheetId: requireEnv("SHEET_ID"),
-    requestBody: {
-      requests: [
-        {
-          deleteDimension: {
-            range: { sheetId: info.sheetId, dimension: "ROWS", startIndex: found.rowNumber - 1, endIndex: found.rowNumber },
-          },
-        },
-      ],
-    },
+    range: `${quoted(info.title)}!A${found.rowNumber}:${columnLetter(info.keys.length - 1)}${found.rowNumber}`,
   });
   return toRow(info.keys, found.values);
 }

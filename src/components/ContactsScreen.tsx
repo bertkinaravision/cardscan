@@ -234,7 +234,7 @@ function ContactItem({
   }
 
   async function remove() {
-    if (!confirm(`Delete ${displayName(c) || "this contact"}? This removes the Sheet row and the card photos. It cannot be undone.`))
+    if (!confirm(`Delete ${displayName(c) || "this contact"}? This removes the contact from the Sheet and its card photos. It cannot be undone.`))
       return;
     setBusy(true);
     setError(null);

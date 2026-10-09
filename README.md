@@ -22,7 +22,7 @@ The **Contacts** tab lists everyone in the Sheet:
 
 - Search by name, company, email or notes. Filter by status, owner and event. Sort by newest or by next action date (overdue next actions show in red).
 - Change the status straight from the list. Tap a contact to edit its next action, owner, notes or any other field, call or email them, open the card photos, or save them to your phone's contacts.
-- **Delete** removes the Sheet row and the card photos in Drive.
+- **Delete** empties the contact's row in the Sheet and removes the card photos in Drive. The empty row is skipped by the app; delete it by hand whenever you like.
 - **Export CSV** / **Export vCard** downloads the contacts currently shown (respecting search and filters).
 
 **Duplicates.** When you review a card whose email, or name plus company, matches a saved contact, CardScan asks whether to save it as a new contact or update the existing one. Updating fills in the newer card details, adds the event and notes, and keeps the status, owner and next action.
@@ -230,7 +230,7 @@ This is a practical summary, not legal advice.
 
 - Business contact information (name, title, work phone, work email, work address) is largely outside the PDPA's main obligations when collected for business purposes. Notes and photos can go beyond that, so treat everything as personal data.
 - Access: only the emails in `ALLOWED_EMAILS` can sign in. The Sheet and photos are shared only with those two people (and the service account).
-- Deletion: deleting a contact in the app removes the Sheet row and its card photos. In the test phase, a photo uploaded by the other person may not be deletable by you (Drive only lets the owner delete files in a personal Drive); the app tells you when that happens. In a Workspace shared drive this doesn't happen.
+- Deletion: deleting a contact in the app empties its Sheet row (every cell, including your own columns) and removes its card photos. Rows are emptied rather than removed so that rows never shift while someone else is editing. In the test phase, a photo uploaded by the other person may not be deletable by you (Drive only lets the owner delete files in a personal Drive); the app tells you when that happens. In a Workspace shared drive this doesn't happen.
 - Offline copy: the phone keeps a copy of the app's screens (not the contact list) so it opens without signal.
 - Signing out asks first, warns about cards not yet saved, and clears the queue, the card photos stored on the phone and the offline copy.
 - `/api/health` shows only whether each setting is present unless you are signed in; IDs and model checks need sign-in.
