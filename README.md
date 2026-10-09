@@ -208,7 +208,7 @@ npm run dev                  # http://localhost:3000
 
 Set `LLM_PROVIDER=mock` to try the app without an AI key (every card returns the same sample contact). Saving still needs the Google settings.
 
-Checks: `npm run lint`, `npx tsc --noEmit`, `npm run build`.
+Checks: `npm run lint`, `npx tsc --noEmit`, `npm test` (Sheet, Drive and merge logic against a fake Google API; no account needed), `npm run build`.
 
 ## Code map
 
