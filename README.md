@@ -128,6 +128,24 @@ After changing a variable on Vercel, redeploy (**Deployments → ⋯ → Redeplo
 
 The queue is stored on the phone, so you can keep scanning with bad signal. Cards are read while the app is open.
 
+## Troubleshooting
+
+| You see | Cause and fix |
+|---|---|
+| Sign-in page: "Server setup problem" (`Configuration`) | A sign-in variable is missing or misnamed (`AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`), or variables were added without redeploying. Fix, then **Redeploy**. Vercel → Logs, filter `/api/auth`, shows the exact error. |
+| Google: "Error 400: redirect_uri_mismatch" | Add `https://<your-app>.vercel.app/api/auth/callback/google` to the OAuth client's redirect URIs. Use the production URL, not a preview link. |
+| Google: "Access blocked" / app in testing | Add the Gmail address under **Test users** on the OAuth consent screen. |
+| "This Google account is not allowed" | The email isn't in `ALLOWED_EMAILS` (comma-separated, exact address). |
+| Save: "The service account can't open the Sheet" | Share the Sheet with the service account email as **Editor**. |
+| Save: "Sheet not found" | `SHEET_ID` is wrong: use the part between `/d/` and `/edit` in the Sheet URL. |
+| Save: "CardScan has no Google Drive access" | Sign out, sign in again, and tick the Google Drive box on Google's screen. |
+| Save: "image folder can't be found" | `DRIVE_FOLDER_ID` is wrong, or the folder isn't shared with the person signed in. |
+| Save: "Google Drive access has expired" | Test phase only: Google ends access after 7 days. Sign out and in again. |
+| Card: "Gemini model … is not available" | Set `LLM_MODEL` to a current model from AI Studio and redeploy. |
+| Card: "free daily limit is used up" | Gemini's free quota for the day is spent. Tap Retry tomorrow, or switch to a paid model. |
+| Card: "The AI model is busy" | Temporary; the app retries by itself. |
+| Card: "Signed out. Sign in again to continue." | Your session ended. Sign in again; the card continues on its own. |
+
 ## The Sheet
 
 One row per approved contact, in this column order:

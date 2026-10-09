@@ -317,6 +317,7 @@ function ContactDetails({
   };
 
   const tel = (n: string) => n.replace(/[^\d+]/g, "");
+  // Anything that is not already an http(s) link becomes https://…, so a cell like "javascript:…" can never run.
   const href = (url: string) => (/^https?:\/\//i.test(url) ? url : `https://${url}`);
 
   return (
@@ -336,8 +337,8 @@ function ContactDetails({
               label="Card photos"
               value={
                 <span className="flex gap-3">
-                  {c.image_front_link && <a className="text-brand underline" href={c.image_front_link} target="_blank" rel="noreferrer">Front</a>}
-                  {c.image_back_link && <a className="text-brand underline" href={c.image_back_link} target="_blank" rel="noreferrer">Back</a>}
+                  {c.image_front_link && <a className="text-brand underline" href={href(c.image_front_link)} target="_blank" rel="noreferrer">Front</a>}
+                  {c.image_back_link && <a className="text-brand underline" href={href(c.image_back_link)} target="_blank" rel="noreferrer">Back</a>}
                 </span>
               }
             />
