@@ -169,8 +169,9 @@ One row per approved contact, in this column order:
 - `next_action` has a dropdown too (Send email, Send brochure / deck, Call, Schedule meeting, Arrange demo, Send proposal / quote, Connect on LinkedIn, Introduce to colleague, Follow up later); anything else can still be typed. Change the list in `NEXT_ACTIONS` in `src/lib/fields.ts`.
 - `id` and `image_file_ids` are used by the app to find, edit and delete rows. Don't change them.
 - Make it look nice: colours, column widths, bold, freezing, hiding columns (`id`, `image_file_ids` and `source_card_ids` are only for the app), sorting and filtering are all fine.
-- You can rename headers to readable ones, for example `first_name` → `First name`, `event` → `Event / place met`, `next_action_date` → `Next action date`. The app recognises the technical name or the label the app itself shows. Other names (e.g. "Given name") are treated as your own extra column, and the app adds a new `first_name` column at the right.
-- You can move columns and add your own; the app matches columns by header, not position.
+- You can rename the tab, rename any header (for example `company` → `Organisation`), move columns, add your own columns, and add rows above the header row (a title, a blank line). The app marks its tab, header row and columns with hidden markers (Google Sheets "developer metadata") that move with them, so it keeps finding them.
+- The markers are added the first time the app opens the Sheet after this version is deployed. **Open the Contacts screen once before you reformat.** Until then, the app recognises columns by header name only (the technical name or the label the app shows, e.g. `First name`).
+- If the tab is deleted, the app shows an error instead of starting a new one; restore it from the Sheet's version history, or add an empty tab named `Contacts` to start again.
 - Text is written as plain text, so nothing on a card can turn into a Sheets formula.
 
 ## Switching to Google Workspace
