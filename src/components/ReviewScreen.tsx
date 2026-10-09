@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BlobImage } from "@/components/BlobImage";
 import {
   EXTRACTED_FIELDS,
@@ -48,6 +48,15 @@ export function ReviewScreen({ id, defaultOwner }: { id: string; defaultOwner: s
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The action bar is fixed to the bottom and grows when a duplicate is shown; keep that much space free
+  // under the form so the last fields can always be scrolled into view.
+  const [barHeight, setBarHeight] = useState(0);
+  const barRef = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return;
+    const ro = new ResizeObserver(() => setBarHeight(el.offsetHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const [saved, setSaved] = useState<ContactRow[]>([]);
   // "" = save as a new contact; otherwise the id of the contact to update.
   const [mergeInto, setMergeInto] = useState("");
@@ -201,8 +210,11 @@ export function ReviewScreen({ id, defaultOwner }: { id: string; defaultOwner: s
         <Field name="next_action_date" type="date" value={draft.next_action_date} onChange={setField} />
       </fieldset>
 
+      {!isSaved && <div aria-hidden style={{ height: Math.max(0, barHeight - 64) }} />}
       {!isSaved && (
-        <div className="fixed inset-x-0 bottom-0 z-10 border-t border-stone-200 bg-white px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
+        <div
+          ref={barRef}
+          className="fixed inset-x-0 bottom-0 z-10 border-t border-stone-200 bg-white px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
           <div className="mx-auto flex max-w-xl flex-col gap-2">
             {error && <p className="text-sm text-red-700">Not saved: {error}</p>}
             {duplicates.length > 0 && (
