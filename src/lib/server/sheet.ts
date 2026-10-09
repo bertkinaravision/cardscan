@@ -34,10 +34,13 @@ export type SheetInfo = { sheetId: number; title: string; headerRow: number; hea
 // Bump when the formatting applied to the tab changes, so existing Sheets get it once too.
 const SETUP_VERSION = "2";
 const SETUP_KEY = "cardscan_setup";
-// Hidden markers (Google Sheets "developer metadata") that stay with the tab when it is renamed and
-// with the header row when rows are inserted above it, so the app keeps finding both.
+// Hidden markers (Google Sheets "developer metadata") that stay with the tab when it is renamed, with
+// the header row when rows are inserted above it, and with each column when it is moved or its
+// header renamed, so the app keeps finding all three however the Sheet is formatted.
 const TAB_KEY = "cardscan_tab";
 const HEADER_KEY = "cardscan_header";
+const COLUMN_KEY = "cardscan_column";
+const isColumn = (v: unknown): v is SheetColumn => (SHEET_COLUMNS as readonly unknown[]).includes(v);
 
 type Meta = {
   metadataId?: number | null;
@@ -56,7 +59,7 @@ async function ensureSheet(): Promise<SheetInfo> {
     sheets.spreadsheets.get({ spreadsheetId, fields: "sheets.properties(sheetId,title)" }),
     sheets.spreadsheets.developerMetadata.search({
       spreadsheetId,
-      requestBody: { dataFilters: [SETUP_KEY, TAB_KEY, HEADER_KEY].map((metadataKey) => ({ developerMetadataLookup: { metadataKey } })) },
+      requestBody: { dataFilters: [SETUP_KEY, TAB_KEY, HEADER_KEY, COLUMN_KEY].map((metadataKey) => ({ developerMetadataLookup: { metadataKey } })) },
     }),
   ]).catch((err) => {
     throw explainGoogleError(err, "sheet");
@@ -98,16 +101,28 @@ async function ensureSheet(): Promise<SheetInfo> {
   const idRow = topRows.findIndex((r) => r.some((h) => headerKey(h) === "id"));
   const headerRow = markedRow ?? (idRow >= 0 ? idRow + 1 : 1);
   const existing = markedRow ? (topRows[0] ?? []) : (topRows[headerRow - 1] ?? []);
-  // If two headers mean the same column (say "Email" and "email"), only the first one is used.
-  const existingKeys = existing.map(headerKey).map((k, i, all) => (k && all.indexOf(k) === i ? k : null));
+  // Which of our columns each column is: its marker first, else its header text. If two columns
+  // claim the same one (say headers "Email" and "email"), only the first is used.
+  const marks = new Map<number, SheetColumn>();
+  for (const m of found) {
+    const d = m.location?.dimensionRange;
+    if (m.metadataKey !== COLUMN_KEY || d?.sheetId !== sheetId || d.dimension !== "COLUMNS" || !isColumn(m.metadataValue)) continue;
+    if (!marks.has(d.startIndex ?? 0) && ![...marks.values()].includes(m.metadataValue)) marks.set(d.startIndex ?? 0, m.metadataValue);
+  }
+  const width = Math.max(existing.length, ...[...marks.keys()].map((i) => i + 1));
+  const existingKeys: (SheetColumn | null)[] = Array.from({ length: width }, (_, i) => marks.get(i) ?? null);
+  existingKeys.forEach((k, i) => {
+    const byName = headerKey(existing[i] ?? "");
+    if (!k && byName && !existingKeys.includes(byName)) existingKeys[i] = byName;
+  });
   const missing = SHEET_COLUMNS.filter((c) => !existingKeys.includes(c));
-  const headers = [...existing, ...missing];
+  const headers = [...Array.from({ length: width }, (_, i) => existing[i] ?? ""), ...missing];
   const keys: (SheetColumn | null)[] = [...existingKeys, ...missing];
 
   if (missing.length > 0) {
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `${quoted(title)}!${columnLetter(existing.length)}${headerRow}`,
+      range: `${quoted(title)}!${columnLetter(width)}${headerRow}`,
       valueInputOption: "RAW",
       requestBody: { values: [missing] },
     });
@@ -121,6 +136,20 @@ async function ensureSheet(): Promise<SheetInfo> {
       },
     });
   }
+  keys.forEach((k, i) => {
+    if (k && marks.get(i) !== k) {
+      requests.push({
+        createDeveloperMetadata: {
+          developerMetadata: {
+            metadataKey: COLUMN_KEY,
+            metadataValue: k,
+            location: { dimensionRange: { sheetId, dimension: "COLUMNS", startIndex: i, endIndex: i + 1 } },
+            visibility: "DOCUMENT",
+          },
+        },
+      });
+    }
+  });
   if (!headerMeta) {
     requests.push({
       createDeveloperMetadata: {

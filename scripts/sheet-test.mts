@@ -198,6 +198,19 @@ ops.insertRows("Contacts", 0, 2);
 assert.ok((await listContacts()).some((c) => c.id === "t1"), "found again after more rows are added above (header marker moved)");
 console.log("Title row tests passed.");
 
+// 15a. Headers renamed to anything: columns are recognised by their marker, not the header text.
+const hdr15: string[] = contacts.rows.find((r) => r.includes("salutation"))!;
+const companyCol = hdr15.findIndex((v) => headerKey(v) === "company");
+hdr15[companyCol] = "Organisation";
+hdr15[hdr15.findIndex((v) => headerKey(v) === "id")] = "Card ref";
+const width15 = hdr15.length;
+await appendContact(row("o1", { first_name: "Org", last_name: "Renamed", company: "Acme" }));
+assert.equal((await listContacts()).find((c) => c.id === "o1")?.company, "Acme", "company read from the renamed column");
+assert.equal(hdr15.length, width15, "no new columns added for renamed headers");
+await updateContact("o1", { company: "Acme Pte Ltd" });
+assert.equal(contacts.rows.find((r) => r.includes("o1"))![companyCol], "Acme Pte Ltd", "edit written to the renamed column");
+console.log("Renamed header tests passed.");
+
 // 15. The tab is renamed (followed by its marker), then deleted (clear error, no silent new tab).
 ops.renameTab("Contacts", "CRM 2026");
 assert.ok((await listContacts()).some((c) => c.id === "t1"), "contacts found in the renamed tab");
