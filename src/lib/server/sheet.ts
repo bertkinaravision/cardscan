@@ -4,7 +4,7 @@ import { requireEnv } from "./env";
 import { explainGoogleError, sheetsClient } from "./google";
 
 const tabName = () => process.env.SHEET_TAB || "Contacts";
-const quotedTab = () => `'${tabName().replace(/'/g, "''")}'`;
+const quoted = (title: string) => `'${title.replace(/'/g, "''")}'`;
 
 function columnLetter(index: number): string {
   let n = index + 1;
@@ -28,11 +28,22 @@ for (const c of SHEET_COLUMNS) {
 export const headerKey = (h: string): SheetColumn | null => HEADER_NAMES.get(squash(h)) ?? null;
 
 // headers: the header row as written; keys: which of our columns each one is (null = a column of your own).
-export type SheetInfo = { sheetId: number; headers: string[]; keys: (SheetColumn | null)[] };
+// headerRow: the header row's number (1 unless someone added rows above it, such as a title).
+export type SheetInfo = { sheetId: number; title: string; headerRow: number; headers: string[]; keys: (SheetColumn | null)[] };
 
 // Bump when the formatting applied to the tab changes, so existing Sheets get it once too.
 const SETUP_VERSION = "2";
 const SETUP_KEY = "cardscan_setup";
+// Hidden markers (Google Sheets "developer metadata") that move with the row when rows are
+// inserted or deleted above it, so the app keeps finding its header row after a title is added.
+const HEADER_KEY = "cardscan_header";
+
+type Meta = {
+  metadataId?: number | null;
+  metadataKey?: string | null;
+  metadataValue?: string | null;
+  location?: { sheetId?: number | null; dimensionRange?: { sheetId?: number | null; dimension?: string | null; startIndex?: number | null } | null } | null;
+};
 
 // Makes sure the tab and header row exist. Adds any of our columns that are missing
 // (to the right of what is there), so a hand-made Sheet keeps working.
@@ -40,23 +51,41 @@ async function ensureSheet(): Promise<SheetInfo> {
   const sheets = sheetsClient();
   const spreadsheetId = requireEnv("SHEET_ID");
 
-  const meta = await sheets.spreadsheets
-    .get({ spreadsheetId, fields: "sheets.properties,developerMetadata(metadataId,metadataKey,metadataValue)" })
-    .catch((err) => {
-      throw explainGoogleError(err, "sheet");
-    });
-  const setupMeta = meta.data.developerMetadata?.find((m) => m.metadataKey === SETUP_KEY);
-  let sheetId = meta.data.sheets?.find((s) => s.properties?.title === tabName())?.properties?.sheetId;
+  const [meta, search] = await Promise.all([
+    sheets.spreadsheets.get({ spreadsheetId, fields: "sheets.properties(sheetId,title)" }),
+    sheets.spreadsheets.developerMetadata.search({
+      spreadsheetId,
+      requestBody: { dataFilters: [SETUP_KEY, HEADER_KEY].map((metadataKey) => ({ developerMetadataLookup: { metadataKey } })) },
+    }),
+  ]).catch((err) => {
+    throw explainGoogleError(err, "sheet");
+  });
+  const found: Meta[] = (search.data.matchedDeveloperMetadata ?? []).map((m) => m.developerMetadata ?? {});
+  const setupMeta = found.find((m) => m.metadataKey === SETUP_KEY);
+  const title = tabName();
+  let sheetId = meta.data.sheets?.find((s) => s.properties?.title === title)?.properties?.sheetId;
   if (sheetId == null) {
     const res = await sheets.spreadsheets.batchUpdate({
       spreadsheetId,
-      requestBody: { requests: [{ addSheet: { properties: { title: tabName(), gridProperties: { frozenRowCount: 1 } } } }] },
+      requestBody: { requests: [{ addSheet: { properties: { title, gridProperties: { frozenRowCount: 1 } } } }] },
     });
     sheetId = res.data.replies![0].addSheet!.properties!.sheetId!;
   }
 
-  const headerRes = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${quotedTab()}!1:1` });
-  const existing = (headerRes.data.values?.[0] ?? []).map((h) => String(h).trim());
+  // The header row: where the marker says, else the first of the top rows with an "id" header
+  // (a Sheet set up before the marker existed, possibly with a title added above), else row 1.
+  const headerMeta = found.find(
+    (m) => m.metadataKey === HEADER_KEY && m.location?.dimensionRange?.sheetId === sheetId && m.location.dimensionRange.dimension === "ROWS",
+  );
+  const markedRow = headerMeta ? (headerMeta.location!.dimensionRange!.startIndex ?? 0) + 1 : null;
+  const top = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${quoted(title)}!${markedRow ? `${markedRow}:${markedRow}` : "1:10"}`,
+  });
+  const topRows = (top.data.values ?? []).map((r) => r.map((h) => String(h).trim()));
+  const idRow = topRows.findIndex((r) => r.some((h) => headerKey(h) === "id"));
+  const headerRow = markedRow ?? (idRow >= 0 ? idRow + 1 : 1);
+  const existing = markedRow ? (topRows[0] ?? []) : (topRows[headerRow - 1] ?? []);
   // If two headers mean the same column (say "Email" and "email"), only the first one is used.
   const existingKeys = existing.map(headerKey).map((k, i, all) => (k && all.indexOf(k) === i ? k : null));
   const missing = SHEET_COLUMNS.filter((c) => !existingKeys.includes(c));
@@ -66,14 +95,29 @@ async function ensureSheet(): Promise<SheetInfo> {
   if (missing.length > 0) {
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `${quotedTab()}!A1`,
+      range: `${quoted(title)}!${columnLetter(existing.length)}${headerRow}`,
       valueInputOption: "RAW",
-      requestBody: { values: [headers] },
+      requestBody: { values: [missing] },
+    });
+  }
+  // Formatting and markers go to Google in one request.
+  const requests: object[] = [];
+  if (!headerMeta) {
+    requests.push({
+      createDeveloperMetadata: {
+        developerMetadata: {
+          metadataKey: HEADER_KEY,
+          metadataValue: "1",
+          location: { dimensionRange: { sheetId, dimension: "ROWS", startIndex: headerRow - 1, endIndex: headerRow } },
+          visibility: "DOCUMENT",
+        },
+      },
     });
   }
   // Formatting is applied when columns are added, and once to Sheets set up by an older version
   // (marked in the Sheet's hidden developer metadata), so formatting you change later is left alone.
-  if (missing.length > 0 || setupMeta?.metadataValue !== SETUP_VERSION) {
+  const format = missing.length > 0 || setupMeta?.metadataValue !== SETUP_VERSION;
+  if (format) {
     // Dropdown for the status column; dates shown (and read back) as yyyy-mm-dd even when typed
     // by hand in Sheets, so the app's date fields and sorting keep working; bold header.
     const statusCol = keys.indexOf("status");
@@ -82,73 +126,69 @@ async function ensureSheet(): Promise<SheetInfo> {
       const col = keys.indexOf(c);
       return {
         repeatCell: {
-          range: { sheetId, startRowIndex: 1, startColumnIndex: col, endColumnIndex: col + 1 },
+          range: { sheetId, startRowIndex: headerRow, startColumnIndex: col, endColumnIndex: col + 1 },
           cell: { userEnteredFormat: { numberFormat: { type: "DATE", pattern: "yyyy-mm-dd" } } },
           fields: "userEnteredFormat.numberFormat",
         },
       };
     });
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: {
-        requests: [
-          ...dateFormats,
-          {
-            repeatCell: {
-              range: { sheetId, startRowIndex: 0, endRowIndex: 1 },
-              cell: { userEnteredFormat: { textFormat: { bold: true } } },
-              fields: "userEnteredFormat.textFormat.bold",
-            },
-          },
-          {
-            setDataValidation: {
-              range: { sheetId, startRowIndex: 1, startColumnIndex: statusCol, endColumnIndex: statusCol + 1 },
-              rule: {
-                condition: { type: "ONE_OF_LIST", values: STATUSES.map((v) => ({ userEnteredValue: v })) },
-                strict: false,
-                showCustomUi: true,
-              },
-            },
-          },
-          setupMeta?.metadataId != null
-            ? {
-                updateDeveloperMetadata: {
-                  dataFilters: [{ developerMetadataLookup: { metadataId: setupMeta.metadataId } }],
-                  developerMetadata: { metadataValue: SETUP_VERSION },
-                  fields: "metadataValue",
-                },
-              }
-            : {
-                createDeveloperMetadata: {
-                  developerMetadata: {
-                    metadataKey: SETUP_KEY,
-                    metadataValue: SETUP_VERSION,
-                    location: { spreadsheet: true },
-                    visibility: "DOCUMENT",
-                  },
-                },
-              },
-          // Next action: same choices as the app; anything else may still be typed.
-          {
-            setDataValidation: {
-              range: {
-                sheetId,
-                startRowIndex: 1,
-                startColumnIndex: nextActionCol,
-                endColumnIndex: nextActionCol + 1,
-              },
-              rule: {
-                condition: { type: "ONE_OF_LIST", values: NEXT_ACTIONS.map((v) => ({ userEnteredValue: v })) },
-                strict: false,
-                showCustomUi: true,
-              },
-            },
-          },
-        ],
+    requests.push(
+      ...dateFormats,
+      {
+        repeatCell: {
+          range: { sheetId, startRowIndex: headerRow - 1, endRowIndex: headerRow },
+          cell: { userEnteredFormat: { textFormat: { bold: true } } },
+          fields: "userEnteredFormat.textFormat.bold",
+        },
       },
-    });
+      {
+        setDataValidation: {
+          range: { sheetId, startRowIndex: headerRow, startColumnIndex: statusCol, endColumnIndex: statusCol + 1 },
+          rule: {
+            condition: { type: "ONE_OF_LIST", values: STATUSES.map((v) => ({ userEnteredValue: v })) },
+            strict: false,
+            showCustomUi: true,
+          },
+        },
+      },
+      setupMeta?.metadataId != null
+        ? {
+            updateDeveloperMetadata: {
+              dataFilters: [{ developerMetadataLookup: { metadataId: setupMeta.metadataId } }],
+              developerMetadata: { metadataValue: SETUP_VERSION },
+              fields: "metadataValue",
+            },
+          }
+        : {
+            createDeveloperMetadata: {
+              developerMetadata: {
+                metadataKey: SETUP_KEY,
+                metadataValue: SETUP_VERSION,
+                location: { spreadsheet: true },
+                visibility: "DOCUMENT",
+              },
+            },
+          },
+      // Next action: same choices as the app; anything else may still be typed.
+      {
+        setDataValidation: {
+          range: {
+            sheetId,
+            startRowIndex: headerRow,
+            startColumnIndex: nextActionCol,
+            endColumnIndex: nextActionCol + 1,
+          },
+          rule: {
+            condition: { type: "ONE_OF_LIST", values: NEXT_ACTIONS.map((v) => ({ userEnteredValue: v })) },
+            strict: false,
+            showCustomUi: true,
+          },
+        },
+      },
+    );
   }
-  return { sheetId, headers, keys };
+  if (requests.length > 0) await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests } });
+  return { sheetId, title, headerRow, headers, keys };
 }
 
 function toRow(keys: (SheetColumn | null)[], values: string[]): ContactRow {
@@ -163,15 +203,13 @@ function toValues(keys: (SheetColumn | null)[], row: Partial<ContactRow>): strin
   return keys.map((k) => (k ? (row[k] ?? "") : ""));
 }
 
-
-
 async function readAll(): Promise<{ info: SheetInfo; rows: { rowNumber: number; values: string[] }[] }> {
   const info = await ensureSheet();
   const res = await sheetsClient().spreadsheets.values.get({
     spreadsheetId: requireEnv("SHEET_ID"),
-    range: `${quotedTab()}!A2:${columnLetter(info.headers.length - 1)}`,
+    range: `${quoted(info.title)}!A${info.headerRow + 1}:${columnLetter(info.headers.length - 1)}`,
   });
-  const rows = (res.data.values ?? []).map((v, i) => ({ rowNumber: i + 2, values: v.map(String) }));
+  const rows = (res.data.values ?? []).map((v, i) => ({ rowNumber: i + info.headerRow + 1, values: v.map(String) }));
   return { info, rows };
 }
 
@@ -190,7 +228,7 @@ export async function appendContact(row: ContactRow, layout?: SheetInfo): Promis
   const info = layout ?? (await ensureSheet());
   await sheetsClient().spreadsheets.values.append({
     spreadsheetId: requireEnv("SHEET_ID"),
-    range: `${quotedTab()}!A1`,
+    range: `${quoted(info.title)}!A${info.headerRow}`,
     // RAW so text from a card can never be run as a Sheets formula.
     valueInputOption: "RAW",
     insertDataOption: "INSERT_ROWS",
@@ -208,7 +246,7 @@ async function locate(id: string) {
     if (!found) return null;
     const check = await sheetsClient().spreadsheets.values.get({
       spreadsheetId: requireEnv("SHEET_ID"),
-      range: `${quotedTab()}!${columnLetter(idCol)}${found.rowNumber}`,
+      range: `${quoted(info.title)}!${columnLetter(idCol)}${found.rowNumber}`,
     });
     if (String(check.data.values?.[0]?.[0] ?? "") === id) return { info, found };
   }
@@ -225,7 +263,7 @@ export async function updateContact(id: string, patch: Partial<ContactRow>): Pro
   const data = Object.entries(changes)
     .filter(([col]) => info.keys.includes(col as SheetColumn))
     .map(([col, value]) => ({
-      range: `${quotedTab()}!${columnLetter(info.keys.indexOf(col as SheetColumn))}${found.rowNumber}`,
+      range: `${quoted(info.title)}!${columnLetter(info.keys.indexOf(col as SheetColumn))}${found.rowNumber}`,
       values: [[value ?? ""]],
     }));
   await sheetsClient().spreadsheets.values.batchUpdate({

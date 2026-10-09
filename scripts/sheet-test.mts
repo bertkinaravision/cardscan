@@ -185,3 +185,15 @@ const r1 = contacts.rows.find((r) => r[0] === "r1")!;
 assert.equal(r1[emailCols[0]], "new@x.example");
 assert.equal((await listContacts()).find((c) => c.id === "r1")!.email, "new@x.example");
 console.log("Setup marker and duplicate header tests passed.");
+
+// 14. A title row added above the headers (also in a Sheet from before the header marker existed).
+fake.state.meta = fake.state.meta.filter((m: { metadataKey: string }) => m.metadataKey !== "cardscan_header");
+ops.insertRows("Contacts", 0, 1, [["Kinara contacts"]]);
+const before14 = (await listContacts()).map((c) => c.id);
+assert.ok(before14.includes("r1") && before14.includes("a2"), "contacts found under the moved header row");
+await appendContact(row("t1", { first_name: "Title", last_name: "Row" }));
+assert.equal(contacts.rows[0].join(), "Kinara contacts", "title row left alone");
+assert.ok((await listContacts()).some((c) => c.id === "t1"), "new contact readable");
+ops.insertRows("Contacts", 0, 2);
+assert.ok((await listContacts()).some((c) => c.id === "t1"), "found again after more rows are added above (header marker moved)");
+console.log("Title row tests passed.");
