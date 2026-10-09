@@ -6,6 +6,10 @@ export function requireEnv(name: string): string {
   return value;
 }
 
+// Values pasted into Vercel sometimes pick up quotes, spaces or a line break; Google then
+// answers "invalid_client". Clean them up instead of failing.
+export const cleanEnv = (v: string | undefined) => v?.trim().replace(/^["']|["']$/g, "").trim() || undefined;
+
 export function allowedEmails(): string[] {
   return (process.env.ALLOWED_EMAILS ?? "")
     .split(",")

@@ -1,18 +1,14 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
-import { driveUploadMode, isAllowed } from "@/lib/server/env";
+import { cleanEnv, driveUploadMode, isAllowed } from "@/lib/server/env";
 
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive";
-
-// Values pasted into Vercel sometimes pick up quotes, spaces or a line break; Google then
-// answers "invalid_client". Clean them up instead of failing.
-const clean = (v: string | undefined) => v?.trim().replace(/^["']|["']$/g, "").trim() || undefined;
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     Google({
-      clientId: clean(process.env.AUTH_GOOGLE_ID),
-      clientSecret: clean(process.env.AUTH_GOOGLE_SECRET),
+      clientId: cleanEnv(process.env.AUTH_GOOGLE_ID),
+      clientSecret: cleanEnv(process.env.AUTH_GOOGLE_SECRET),
       authorization: {
         params:
           driveUploadMode() === "user"
