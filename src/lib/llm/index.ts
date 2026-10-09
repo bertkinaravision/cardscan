@@ -16,8 +16,13 @@ function extractor(): VisionExtractor {
   const provider = (process.env.LLM_PROVIDER ?? "gemini").toLowerCase();
   const model = process.env.LLM_MODEL || DEFAULT_MODELS[provider];
   switch (provider) {
-    case "gemini":
-      return geminiExtractor(model);
+    case "gemini": {
+      const fallbacks = (process.env.LLM_FALLBACK_MODELS ?? "gemini-3.1-flash-lite,gemini-3.5-flash")
+        .split(",")
+        .map((m) => m.trim())
+        .filter(Boolean);
+      return geminiExtractor([...new Set([model, ...fallbacks])]);
+    }
     case "anthropic":
       return anthropicExtractor(model);
     case "mock":

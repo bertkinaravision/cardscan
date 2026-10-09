@@ -113,6 +113,7 @@ See `.env.example` for a copy-paste template. **The examples below only show the
 | `DRIVE_UPLOAD_MODE` | `user` | `user` in the test phase, `service_account` with a Workspace shared drive. |
 | `LLM_PROVIDER` | `gemini` | `gemini`, `anthropic` or `mock`. |
 | `LLM_MODEL` | (empty) | Optional. Defaults: `gemini-3.5-flash-lite` / `claude-haiku-5-5`. |
+| `LLM_FALLBACK_MODELS` | (empty) | Optional, Gemini only. Models to switch to when the main one's free daily limit is used up or it is retired. Default: `gemini-3.1-flash-lite,gemini-3.5-flash`. |
 | `GEMINI_API_KEY` | `AIza...` | When `LLM_PROVIDER=gemini`. |
 | `ANTHROPIC_API_KEY` | `sk-ant-...` | When `LLM_PROVIDER=anthropic`. |
 
@@ -142,7 +143,7 @@ The queue is stored on the phone, so you can keep scanning with bad signal. Card
 | Save: "image folder can't be found" | `DRIVE_FOLDER_ID` is wrong, or the folder isn't shared with the person signed in. |
 | Save: "Google Drive access has expired" | Test phase only: Google ends access after 7 days. Sign out and in again. |
 | Card: "Gemini model … is not available" | Set `LLM_MODEL` to a current model from AI Studio and redeploy. |
-| Card: "free daily limit is used up" | Gemini's free quota for the day is spent. Tap Retry tomorrow, or switch to a paid model. |
+| Card: "No Gemini model is available right now" | Every model's free daily limit is used up (the app already switched between models), or the models were retired. Tap Retry later, set newer models in `LLM_MODEL` / `LLM_FALLBACK_MODELS`, or switch to a paid model. |
 | Card: "The AI model is busy" | Temporary; the app retries by itself. |
 | Card: "Signed out. Sign in again to continue." | Your session ended. Sign in again; the card continues on its own. |
 
