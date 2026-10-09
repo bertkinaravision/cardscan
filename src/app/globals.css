@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* Flostream brand palette (Brand Guidelines, Sept 2025). */
+/* Colour palette (from the Flostream brand guidelines, Sept 2025). */
 @theme {
   --color-brand: #1a8dbd; /* Azure: main colour */
   --color-brand-dark: #136f96;
