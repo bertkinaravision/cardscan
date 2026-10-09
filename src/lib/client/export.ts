@@ -5,7 +5,8 @@ const EXPORT_COLUMNS = SHEET_COLUMNS.filter((c) => c !== "image_file_ids" && c !
 // Cells that start with these could run as formulas in Excel or Sheets.
 // A plain phone number like "+65 6123 4567" is left alone.
 const isPhone = (v: string) => /^\+[\d\s().-]+$/.test(v);
-const csvCell = (v: string) => {
+const csvCell = (raw: string | undefined) => {
+  const v = raw ?? "";
   const safe = /^[=+\-@\t\r]/.test(v) && !isPhone(v) ? `'${v}` : v;
   return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 };
@@ -15,7 +16,7 @@ export function toCsv(rows: ContactRow[]): string {
   return "\uFEFF" + lines.join("\r\n"); // BOM so Excel opens Chinese/Japanese text correctly
 }
 
-const vEscape = (v: string) => v.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/([,;])/g, "\\$1");
+const vEscape = (v: string | undefined) => (v ?? "").replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/([,;])/g, "\\$1");
 
 export function toVCard(rows: ContactRow[]): string {
   return rows
