@@ -5,6 +5,7 @@ import { NavLinks } from "@/components/NavLinks";
 import { QueueRunner } from "@/components/QueueRunner";
 import { ServiceWorker } from "@/components/ServiceWorker";
 import { SignOutButton } from "@/components/SignOutButton";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { isAllowed } from "@/lib/server/env";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
@@ -23,8 +24,9 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
             "use server";
             await signOut({ redirectTo: "/signin" });
           }}
-          className="flex items-center text-sm"
+          className="flex items-center gap-2 text-sm"
         >
+          <ThemeToggle />
           <SignOutButton email={session.user.email} />
         </form>
       </header>
