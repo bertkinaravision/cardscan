@@ -27,7 +27,10 @@ function extractor(): VisionExtractor {
   }
 }
 
-export async function extractCard(images: CardImage[]): Promise<Extraction> {
+// Chinese, Japanese or Korean characters.
+const CJK = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff]/;
+
+async function extractOnce(images: CardImage[]): Promise<Extraction> {
   const raw = await extractor().extract(images);
   let json: unknown;
   try {
@@ -38,6 +41,18 @@ export async function extractCard(images: CardImage[]): Promise<Extraction> {
   const parsed = extractionSchema.safeParse(normalize(json));
   if (!parsed.success) throw new Error("The model's answer did not match the expected fields.");
   return parsed.data;
+}
+
+export async function extractCard(images: CardImage[]): Promise<Extraction> {
+  let data = await extractOnce(images);
+  // Names must be in Latin letters. The model now and then copies a Chinese/Japanese name
+  // as-is; asking once more usually fixes it. If not, keep it but flag it for review.
+  if (CJK.test(data.first_name + data.last_name)) {
+    const again = await extractOnce(images).catch(() => null);
+    if (again && !CJK.test(again.first_name + again.last_name)) data = again;
+    else data.low_confidence = [...new Set([...data.low_confidence, "first_name" as const, "last_name" as const])];
+  }
+  return data;
 }
 
 // Turns any value into text: nested objects and lists become "a; b; c" instead of "[object Object]".
