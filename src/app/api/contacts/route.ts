@@ -27,6 +27,9 @@ export async function POST(req: Request) {
     if (!/^[a-zA-Z0-9-]{8,64}$/.test(id)) throw new HttpError(400, "Invalid id.");
     const parsed = contactInputSchema.safeParse(JSON.parse(String(form.get("contact") ?? "{}")));
     if (!parsed.success) throw new HttpError(400, invalidFieldMessage(parsed.error));
+    const { first_name, last_name, company, email, mobile } = parsed.data;
+    if (![first_name, last_name, company, email, mobile].some(Boolean))
+      throw new HttpError(400, "Add at least a name, company, email or mobile number before saving.");
 
     // A retry after a lost response must not save or merge the same card twice.
     const { contacts: all, layout } = await listContactsWithLayout();
