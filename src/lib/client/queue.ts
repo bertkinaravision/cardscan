@@ -1,5 +1,5 @@
 // The scan queue lives on the phone (IndexedDB), so it survives refreshes and bad signal.
-import { createStore, del, get, set, values } from "idb-keyval";
+import { createStore, del, get, promisifyRequest, set, values } from "idb-keyval";
 import type { ContactInput, Extraction } from "@/lib/fields";
 
 export type CardStatus = "queued" | "processing" | "review" | "saving" | "saved" | "failed";
@@ -13,11 +13,11 @@ export const STATUS_LABELS: Record<CardStatus, string> = {
   failed: "Failed",
 };
 
-export type QueuedCard = {
+// Everything about a card except its photos.
+export type CardInfo = {
   id: string;
   createdAt: number;
-  front: Blob;
-  back: Blob | null;
+  hasBack: boolean;
   status: CardStatus;
   error?: string;
   // Set when the model has read the card.
@@ -29,60 +29,90 @@ export type QueuedCard = {
   dateMet: string;
 };
 
-const store = typeof indexedDB !== "undefined" ? createStore("cardscan", "cards") : undefined;
+export type QueuedCard = CardInfo & { front: Blob; back: Blob | null };
+
+const browser = typeof indexedDB !== "undefined";
+// Card details and photos are kept apart: photos are written once, and status or draft
+// updates are small single-transaction writes, so two screens can't overwrite each other.
+const cards = browser ? createStore("cardscan-v2", "cards") : undefined;
+const photos = browser ? createStore("cardscan-v2-photos", "photos") : undefined;
 const CHANGED = "cardscan:queue-changed";
 
 // Photos are stored as raw bytes rather than Blobs: some Safari versions lose Blobs kept in IndexedDB.
 type StoredPhoto = { bytes: ArrayBuffer; type: string };
-type StoredCard = Omit<QueuedCard, "front" | "back"> & { front: StoredPhoto | Blob; back: StoredPhoto | Blob | null };
+const photoCache = new Map<string, Blob>();
 
-const toStored = async (b: Blob): Promise<StoredPhoto> => ({ bytes: await b.arrayBuffer(), type: b.type || "image/jpeg" });
-const fromStored = (p: StoredPhoto | Blob): Blob => (p instanceof Blob ? p : new Blob([p.bytes], { type: p.type }));
-const fromStoredCard = (c: StoredCard): QueuedCard => ({ ...c, front: fromStored(c.front), back: c.back ? fromStored(c.back) : null });
+async function loadPhoto(key: string): Promise<Blob | null> {
+  const hit = photoCache.get(key);
+  if (hit) return hit;
+  const stored = await get<StoredPhoto>(key, photos);
+  if (!stored) return null;
+  const blob = new Blob([stored.bytes], { type: stored.type });
+  photoCache.set(key, blob);
+  return blob;
+}
 
-// Blobs are rebuilt on every read, so keep one per card: images don't flicker on each queue update.
-const blobCache = new Map<string, { front: Blob; back: Blob | null }>();
-function withCachedBlobs(card: QueuedCard): QueuedCard {
-  const hit = blobCache.get(card.id);
-  if (hit && hit.front.size === card.front.size && (hit.back?.size ?? 0) === (card.back?.size ?? 0)) {
-    return { ...card, front: hit.front, back: hit.back };
-  }
-  blobCache.set(card.id, { front: card.front, back: card.back });
-  return card;
+async function withPhotos(info: CardInfo): Promise<QueuedCard | undefined> {
+  const front = await loadPhoto(`${info.id}:front`);
+  if (!front) return undefined;
+  const back = info.hasBack ? await loadPhoto(`${info.id}:back`) : null;
+  return { ...info, front, back };
+}
+
+const changed = () => window.dispatchEvent(new Event(CHANGED));
+
+export async function listCardInfo(): Promise<CardInfo[]> {
+  return (await values<CardInfo>(cards)).sort((a, b) => a.createdAt - b.createdAt);
 }
 
 export async function listCards(): Promise<QueuedCard[]> {
-  const all = await values<StoredCard>(store);
-  return all.map((c) => withCachedBlobs(fromStoredCard(c))).sort((a, b) => a.createdAt - b.createdAt);
+  const all = await Promise.all((await listCardInfo()).map(withPhotos));
+  return all.filter((c): c is QueuedCard => !!c);
 }
 
 export async function getCard(id: string): Promise<QueuedCard | undefined> {
-  const c = await get<StoredCard>(id, store);
-  return c ? withCachedBlobs(fromStoredCard(c)) : undefined;
+  const info = await get<CardInfo>(id, cards);
+  return info ? withPhotos(info) : undefined;
 }
 
-export async function putCard(card: QueuedCard): Promise<void> {
-  const stored: StoredCard = {
-    ...card,
-    front: await toStored(card.front),
-    back: card.back ? await toStored(card.back) : null,
+export async function addCard(info: Omit<CardInfo, "hasBack">, front: Blob, back: Blob | null): Promise<void> {
+  const save = async (key: string, blob: Blob) => {
+    await set(key, { bytes: await blob.arrayBuffer(), type: blob.type || "image/jpeg" } satisfies StoredPhoto, photos);
+    photoCache.set(key, blob);
   };
-  await set(card.id, stored, store);
-  window.dispatchEvent(new Event(CHANGED));
+  await save(`${info.id}:front`, front);
+  if (back) await save(`${info.id}:back`, back);
+  await set(info.id, { ...info, hasBack: !!back } satisfies CardInfo, cards);
+  changed();
 }
 
-export async function updateCard(id: string, patch: Partial<QueuedCard>): Promise<QueuedCard | undefined> {
-  const card = await getCard(id);
-  if (!card) return undefined;
-  const next = { ...card, ...patch };
-  await putCard(next);
-  return next;
+// Read-modify-write in one IndexedDB transaction. `patch` may be a function of the current card,
+// so a change can depend on the latest state (for example "only if still saving").
+export async function updateCard(
+  id: string,
+  patch: Partial<CardInfo> | ((current: CardInfo) => Partial<CardInfo> | null),
+): Promise<void> {
+  if (!cards) return;
+  let wrote = false;
+  await cards("readwrite", async (store) => {
+    const current = (await promisifyRequest(store.get(id))) as CardInfo | undefined;
+    if (!current) return; // removed meanwhile
+    const p = typeof patch === "function" ? patch(current) : patch;
+    if (!p) return;
+    store.put({ ...current, ...p }, id);
+    wrote = true;
+    await promisifyRequest(store.transaction);
+  });
+  if (wrote) changed();
 }
 
 export async function removeCard(id: string): Promise<void> {
-  await del(id, store);
-  blobCache.delete(id);
-  window.dispatchEvent(new Event(CHANGED));
+  await del(id, cards);
+  await del(`${id}:front`, photos);
+  await del(`${id}:back`, photos);
+  photoCache.delete(`${id}:front`);
+  photoCache.delete(`${id}:back`);
+  changed();
 }
 
 export function onQueueChange(fn: () => void): () => void {

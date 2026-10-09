@@ -14,7 +14,7 @@ import {
   type ExtractedField,
 } from "@/lib/fields";
 import { displayName, fetchContacts, findDuplicates, invalidateContacts } from "@/lib/client/contacts";
-import { getCard, listCards, removeCard, updateCard, type QueuedCard } from "@/lib/client/queue";
+import { getCard, listCardInfo, removeCard, updateCard, type QueuedCard } from "@/lib/client/queue";
 
 const MULTILINE = new Set(["address", "other", "notes"]);
 const INPUT_MODES: Partial<Record<string, "email" | "tel" | "url">> = {
@@ -81,18 +81,22 @@ export function ReviewScreen({ id, defaultOwner }: { id: string; defaultOwner: s
       const next = { ...d!, [name]: value } as ContactInput;
       // Keep edits on the phone so nothing is lost if the app is closed.
       if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => updateCard(id, { draft: next }), 400);
+      saveTimer.current = setTimeout(
+        () => updateCard(id, (current) => (current.status === "review" ? { draft: next } : null)),
+        400,
+      );
       return next;
     });
   }
 
   async function goToNext() {
-    const next = (await listCards()).find((c) => c.status === "review" && c.id !== id);
+    const next = (await listCardInfo()).find((c) => c.status === "review" && c.id !== id);
     router.replace(next ? `/review/${next.id}` : "/");
   }
 
   async function approve() {
     if (!card || !draft) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
     setSaving(true);
     setError(null);
     await updateCard(id, { draft, status: "saving" });

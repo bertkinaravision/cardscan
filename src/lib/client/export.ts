@@ -1,6 +1,6 @@
 import { SHEET_COLUMNS, type ContactRow } from "@/lib/fields";
 
-const EXPORT_COLUMNS = SHEET_COLUMNS.filter((c) => c !== "image_file_ids");
+const EXPORT_COLUMNS = SHEET_COLUMNS.filter((c) => c !== "image_file_ids" && c !== "source_card_ids");
 
 // Cells that start with these could run as formulas in Excel or Sheets.
 // A plain phone number like "+65 6123 4567" is left alone.

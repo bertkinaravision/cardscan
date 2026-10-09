@@ -5,9 +5,9 @@ import { useEffect, useRef, useState } from "react";
 import { BlobImage } from "@/components/BlobImage";
 import { compressImage } from "@/lib/client/image";
 import {
+  addCard as addToQueue,
   listCards,
   onQueueChange,
-  putCard,
   removeCard,
   STATUS_LABELS,
   updateCard,
@@ -81,15 +81,11 @@ export function ScanScreen() {
 
   async function addCard() {
     if (!front) return;
-    await putCard({
-      id: crypto.randomUUID(),
-      createdAt: Date.now(),
+    await addToQueue(
+      { id: crypto.randomUUID(), createdAt: Date.now(), status: "queued", event: event.trim(), dateMet },
       front,
       back,
-      status: "queued",
-      event: event.trim(),
-      dateMet,
-    });
+    );
     setFront(null);
     setBack(null);
     if (frontInput.current) frontInput.current.value = "";

@@ -1,13 +1,11 @@
-// Decodes a photo in whichever way this browser supports. Browsers apply the camera's
-// EXIF rotation automatically in all three paths.
+// Decodes a photo in whichever way this browser supports, keeping the camera's EXIF rotation.
 async function decode(file: Blob): Promise<{ source: CanvasImageSource; width: number; height: number; done: () => void }> {
-  for (const opts of [{ imageOrientation: "from-image" } as ImageBitmapOptions, undefined]) {
-    try {
-      const bitmap = await createImageBitmap(file, opts);
-      return { source: bitmap, width: bitmap.width, height: bitmap.height, done: () => bitmap.close() };
-    } catch {
-      // Older Safari rejects the options, and some formats (HEIC) only decode through <img>.
-    }
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+    return { source: bitmap, width: bitmap.width, height: bitmap.height, done: () => bitmap.close() };
+  } catch {
+    // Older Safari rejects the options, and some formats (HEIC) only decode through <img>,
+    // which applies EXIF rotation in every current browser.
   }
   const url = URL.createObjectURL(file);
   try {

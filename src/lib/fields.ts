@@ -65,6 +65,8 @@ export const SHEET_COLUMNS = [
   "image_front_link",
   "image_back_link",
   "image_file_ids",
+  // Ids of rescanned cards merged into this contact, so a retried merge is not applied twice.
+  "source_card_ids",
 ] as const;
 export type SheetColumn = (typeof SHEET_COLUMNS)[number];
 export type ContactRow = Record<SheetColumn, string>;

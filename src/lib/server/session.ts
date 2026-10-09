@@ -25,6 +25,10 @@ export async function requireUser(req: Request): Promise<ApiUser> {
   return { email, name, googleAccessToken };
 }
 
+// Refreshed tokens can't be written back into the session cookie from an API route, so keep them
+// in memory for their lifetime instead of asking Google again on every request.
+const refreshed = new Map<string, { token: string; expiresAt: number }>();
+
 // Reads the person's Google token from the session cookie and refreshes it if it has expired.
 async function userAccessToken(req: Request): Promise<string | null> {
   const token = await getToken({
@@ -36,6 +40,8 @@ async function userAccessToken(req: Request): Promise<string | null> {
   const expiresAt = (token.googleExpiresAt ?? 0) * 1000;
   if (Date.now() < expiresAt - 60_000) return token.googleAccessToken;
   if (!token.googleRefreshToken) return null;
+  const cached = refreshed.get(token.googleRefreshToken);
+  if (cached && Date.now() < cached.expiresAt - 60_000) return cached.token;
 
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -47,8 +53,13 @@ async function userAccessToken(req: Request): Promise<string | null> {
     }),
   });
   if (!res.ok) return null;
-  const data = (await res.json()) as { access_token?: string };
-  return data.access_token ?? null;
+  const data = (await res.json()) as { access_token?: string; expires_in?: number };
+  if (!data.access_token) return null;
+  refreshed.set(token.googleRefreshToken, {
+    token: data.access_token,
+    expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000,
+  });
+  return data.access_token;
 }
 
 export function errorResponse(err: unknown): Response {
