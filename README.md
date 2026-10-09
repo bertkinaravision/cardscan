@@ -119,6 +119,8 @@ After changing a variable on Vercel, redeploy (**Deployments → ⋯ → Redeplo
 ## Install on your phone
 
 1. Open the Vercel URL in Safari (iPhone) or Chrome (Android) and sign in.
+   - Test phase: Google shows **"Google hasn't verified this app"**. That's expected for your own app in Testing mode: tap **Advanced → Go to CardScan (unsafe)**.
+   - On the permissions screen, **tick the Google Drive box**. Without it, saving fails with "CardScan has no Google Drive access".
 2. iPhone: **Share → Add to Home Screen**. Android: **⋮ → Add to Home screen** (or **Install app**).
 3. Open CardScan from the home screen icon. The first time you take a photo, allow camera access.
 

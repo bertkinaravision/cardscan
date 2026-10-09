@@ -1,7 +1,7 @@
 import "server-only";
 import { SHEET_COLUMNS, STATUSES, type ContactRow, type SheetColumn } from "@/lib/fields";
 import { requireEnv } from "./env";
-import { sheetsClient } from "./google";
+import { explainGoogleError, sheetsClient } from "./google";
 
 const tabName = () => process.env.SHEET_TAB || "Contacts";
 const quotedTab = () => `'${tabName().replace(/'/g, "''")}'`;
@@ -25,7 +25,9 @@ async function ensureSheet(): Promise<SheetInfo> {
   const sheets = sheetsClient();
   const spreadsheetId = requireEnv("SHEET_ID");
 
-  const meta = await sheets.spreadsheets.get({ spreadsheetId, fields: "sheets.properties" });
+  const meta = await sheets.spreadsheets.get({ spreadsheetId, fields: "sheets.properties" }).catch((err) => {
+    throw explainGoogleError(err, "sheet");
+  });
   let sheetId = meta.data.sheets?.find((s) => s.properties?.title === tabName())?.properties?.sheetId;
   if (sheetId == null) {
     const res = await sheets.spreadsheets.batchUpdate({

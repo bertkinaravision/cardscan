@@ -179,3 +179,12 @@ assert.equal(mergeContact({ ...old, event: "SuperAI; MedTech Asia" }, card, { fr
 console.log("Merge tests passed.");
 assert.equal(mergeContact({ ...old, event: "SuperAI" }, { ...card, event: "Super" }, { front: null, back: null }, "").event, "SuperAI; Super", "events matched exactly");
 console.log("Event merge test passed.");
+
+// 7. Setup mistakes give actionable messages.
+const { explainGoogleError } = await import("../src/lib/server/google");
+assert.match(explainGoogleError({ code: 403, message: "The caller does not have permission" }, "sheet").message, /Share the Sheet with test@test/);
+assert.match(explainGoogleError({ code: 404, message: "Requested entity was not found." }, "sheet").message, /SHEET_ID/);
+assert.match(explainGoogleError({ code: 403, message: "Request had insufficient authentication scopes." }, "drive").message, /tick the Google Drive box/);
+assert.match(explainGoogleError({ code: 404, message: "File not found: folder1." }, "drive").message, /DRIVE_FOLDER_ID/);
+assert.match(explainGoogleError({ code: 403, message: "Google Sheets API has not been used in project 1 before or it is disabled." }, "sheet").message, /not enabled/);
+console.log("Error message tests passed.");

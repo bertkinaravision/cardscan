@@ -36,6 +36,10 @@ export function geminiExtractor(model: string): VisionExtractor {
       } catch (err) {
         // 429 = rate limit, 503 = model temporarily overloaded: both are worth retrying.
         if (err instanceof ApiError && (err.status === 429 || err.status === 503)) throw new LlmRateLimitError(err.message);
+        if (err instanceof ApiError && err.status === 404)
+          throw new Error(`Gemini model "${model}" is not available. Set LLM_MODEL to a current model from AI Studio.`);
+        if (err instanceof ApiError && (err.status === 400 || err.status === 403) && /api key|API_KEY/i.test(err.message))
+          throw new Error("GEMINI_API_KEY is missing or invalid. Create a key at aistudio.google.com.");
         throw err;
       }
     },
