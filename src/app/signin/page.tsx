@@ -1,0 +1,41 @@
+import Image from "next/image";
+import { redirect } from "next/navigation";
+import { auth, signIn } from "@/auth";
+
+export default async function SignInPage({ searchParams }: PageProps<"/signin">) {
+  const session = await auth();
+  if (session?.user) redirect("/");
+  const { error } = await searchParams;
+
+  return (
+    <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-6 px-6">
+      <div className="flex flex-col items-center text-center">
+        {/* Official Flostream logo, unmodified, with clear space around it. */}
+        <Image src="/flostream-logo.png" alt="Flostream" width={240} height={144} priority className="mb-8" />
+        <h1 className="text-3xl font-semibold text-brand">CardScan</h1>
+        <p className="mt-2 text-stone-600">Scan business cards into the shared contact sheet.</p>
+      </div>
+      {error && (
+        <p className="rounded-lg bg-red-50 p-3 text-sm text-red-800">
+          {error === "AccessDenied"
+            ? "This Google account is not allowed to use CardScan."
+            : "Sign-in failed. Please try again."}
+        </p>
+      )}
+      <form
+        action={async () => {
+          "use server";
+          await signIn("google", { redirectTo: "/" });
+        }}
+      >
+        <button className="w-full rounded-xl bg-brand px-4 py-3 text-lg font-medium text-white active:bg-brand-dark">
+          Sign in with Google
+        </button>
+      </form>
+      <footer className="mt-10 flex flex-col items-center gap-2 text-xs text-stone-500">
+        <span>by</span>
+        <Image src="/kinara-logo.png" alt="Kinara Vision Technologies" width={120} height={73} />
+      </footer>
+    </main>
+  );
+}

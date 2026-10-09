@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+/* Flostream brand palette (Brand Guidelines, Sept 2025). */
+@theme {
+  --color-brand: #1a8dbd; /* Azure: main colour */
+  --color-brand-dark: #136f96;
+  --color-accent: #37beac; /* Turquoise */
+  --color-mist: #9fbbc5; /* Grey Azure */
+  --color-ink: #0d0e0f; /* Dark grey blue */
+  --font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SG", "Hiragino Sans", "Noto Sans CJK SC", sans-serif;
+  --font-heading: var(--font-montserrat), "Helvetica Neue", Arial, sans-serif;
+}
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  -webkit-tap-highlight-color: transparent;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-heading);
+}
+
+input,
+select,
+textarea {
+  font-size: 16px; /* stops iOS zooming into fields */
+}
