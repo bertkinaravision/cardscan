@@ -35,7 +35,7 @@ export function anthropicExtractor(model: string): VisionExtractor {
         if (res.stop_reason === "refusal") throw new Error("The model declined to read this card.");
         return res.parsed_output ? JSON.stringify(res.parsed_output) : "";
       } catch (err) {
-        if (err instanceof Anthropic.RateLimitError) throw new LlmRateLimitError(err.message);
+        if (err instanceof Anthropic.RateLimitError || err instanceof Anthropic.InternalServerError) throw new LlmRateLimitError(err.message);
         throw err;
       }
     },

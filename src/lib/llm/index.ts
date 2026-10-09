@@ -8,7 +8,7 @@ import type { CardImage, VisionExtractor } from "./types";
 export { LlmRateLimitError } from "./types";
 
 const DEFAULT_MODELS: Record<string, string> = {
-  gemini: "gemini-2.5-flash",
+  gemini: "gemini-3.5-flash-lite",
   anthropic: "claude-haiku-5-5",
 };
 

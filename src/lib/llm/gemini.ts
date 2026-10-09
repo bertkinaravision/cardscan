@@ -34,7 +34,8 @@ export function geminiExtractor(model: string): VisionExtractor {
         });
         return res.text ?? "";
       } catch (err) {
-        if (err instanceof ApiError && err.status === 429) throw new LlmRateLimitError(err.message);
+        // 429 = rate limit, 503 = model temporarily overloaded: both are worth retrying.
+        if (err instanceof ApiError && (err.status === 429 || err.status === 503)) throw new LlmRateLimitError(err.message);
         throw err;
       }
     },

@@ -72,7 +72,7 @@ The app creates the `Contacts` tab and header row by itself on the first save.
 
 1. Go to <https://aistudio.google.com/> and sign in.
 2. Click **Get API key → Create API key**. Don't add billing; that keeps it on the free tier.
-3. If `gemini-2.5-flash` is no longer listed in AI Studio's model list, set `LLM_MODEL` to a current free Flash model.
+3. If `gemini-3.5-flash-lite` is no longer listed in AI Studio's model list, set `LLM_MODEL` to a current free Flash model.
 
 ### 7. Deploy on Vercel
 
@@ -99,7 +99,7 @@ See `.env.example` for a copy-paste template.
 | `DRIVE_FOLDER_ID` | `1XyZ...` | Folder ID for card photos (step 5). |
 | `DRIVE_UPLOAD_MODE` | `user` | `user` in the test phase, `service_account` with a Workspace shared drive. |
 | `LLM_PROVIDER` | `gemini` | `gemini`, `anthropic` or `mock`. |
-| `LLM_MODEL` | (empty) | Optional. Defaults: `gemini-2.5-flash` / `claude-haiku-5-5`. |
+| `LLM_MODEL` | (empty) | Optional. Defaults: `gemini-3.5-flash-lite` / `claude-haiku-5-5`. |
 | `GEMINI_API_KEY` | `AIza...` | When `LLM_PROVIDER=gemini`. |
 | `ANTHROPIC_API_KEY` | `sk-ant-...` | When `LLM_PROVIDER=anthropic`. |
 

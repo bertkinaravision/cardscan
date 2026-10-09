@@ -19,7 +19,7 @@ export async function POST(req: Request) {
     return Response.json({ extraction });
   } catch (err) {
     if (err instanceof LlmRateLimitError) {
-      return Response.json({ error: "The AI model is busy (rate limit). Retrying shortly." }, { status: 429 });
+      return Response.json({ error: "The AI model is busy. Retrying shortly." }, { status: 429 });
     }
     return errorResponse(err);
   }
