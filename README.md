@@ -9,6 +9,17 @@ A phone web app (PWA) for scanning business cards into a shared Google Sheet.
 
 Nothing is written to the Sheet until you approve a card.
 
+The **Contacts** tab lists everyone in the Sheet:
+
+- Search by name, company, email or notes. Filter by status, owner and event. Sort by newest or by next action date (overdue next actions show in red).
+- Change the status straight from the list. Tap a contact to edit its next action, owner, notes or any other field, call or email them, open the card photos, or save them to your phone's contacts.
+- **Delete** removes the Sheet row and the card photos in Drive.
+- **Export CSV** / **Export vCard** downloads the contacts currently shown (respecting search and filters).
+
+**Duplicates.** When you review a card whose email, or name plus company, matches a saved contact, CardScan asks whether to save it as a new contact or update the existing one. Updating fills in the newer card details, adds the event and notes, and keeps the status, owner and next action.
+
+**Offline.** After the app has been opened once with signal, it also opens without signal. Cards you add are kept on the phone and processed when the connection is back.
+
 Built with Next.js, deployed on Vercel. Only the emails listed in `ALLOWED_EMAILS` can sign in.
 
 ## Phases
@@ -72,7 +83,7 @@ The app creates the `Contacts` tab and header row by itself on the first save.
 
 1. Go to <https://aistudio.google.com/> and sign in.
 2. Click **Get API key → Create API key**. Don't add billing; that keeps it on the free tier.
-3. If `gemini-3.5-flash-lite` is no longer listed in AI Studio's model list, set `LLM_MODEL` to a current free Flash model.
+3. The app uses `gemini-3.5-flash-lite` by default. In tests it read English, Chinese and Japanese cards correctly in under 2 seconds. Google retires older models for new users without much notice (`gemini-2.5-flash` already is); if you see "model not found", set `LLM_MODEL` to a current Flash or Flash-Lite model from AI Studio's list.
 
 ### 7. Deploy on Vercel
 
@@ -181,7 +192,8 @@ This is a practical summary, not legal advice.
 
 - Business contact information (name, title, work phone, work email, work address) is largely outside the PDPA's main obligations when collected for business purposes. Notes and photos can go beyond that, so treat everything as personal data.
 - Access: only the emails in `ALLOWED_EMAILS` can sign in. The Sheet and photos are shared only with those two people (and the service account).
-- Deletion: (coming in milestone d) a contact can be deleted from the app; this removes the Sheet row and both photos.
+- Deletion: deleting a contact in the app removes the Sheet row and its card photos. In the test phase, a photo uploaded by the other person may not be deletable by you (Drive only lets the owner delete files in a personal Drive); the app tells you when that happens. In a Workspace shared drive this doesn't happen.
+- Offline copy: the phone keeps a copy of the app's screens (not the contact list) so it opens without signal. Signing out clears it.
 - Model provider: in the test phase Gemini's free tier may use photos for training (see above). In the next phase Claude's API doesn't train on your data by default.
 - No analytics or third-party trackers. Secrets live only in Vercel's environment variables.
 - Photos are compressed on the phone (max 1600px JPEG) before upload.
@@ -202,7 +214,10 @@ Checks: `npm run lint`, `npx tsc --noEmit`, `npm run build`.
 
 - `src/components/ScanScreen.tsx`: capture screen and queue.
 - `src/components/QueueRunner.tsx`: sends queued cards to the AI one at a time.
-- `src/components/ReviewScreen.tsx`: review and approve.
+- `src/components/ReviewScreen.tsx`: review and approve, duplicate check.
+- `src/components/ContactsScreen.tsx`: list, search, filters, inline edits, delete, export.
+- `src/lib/client/contacts.ts`, `export.ts`: contact API calls, duplicate matching, CSV/vCard.
+- `public/sw.js`: offline support.
 - `src/lib/client/queue.ts`: queue stored on the phone (IndexedDB).
 - `src/lib/llm/`: model adapters (Gemini, Claude, mock) and the shared prompt.
 - `src/lib/fields.ts`: field list, statuses, Sheet columns, validation.

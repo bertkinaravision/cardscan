@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BlobImage } from "@/components/BlobImage";
 import {
   EXTRACTED_FIELDS,
@@ -10,8 +10,10 @@ import {
   STATUSES,
   emptyExtraction,
   type ContactInput,
+  type ContactRow,
   type ExtractedField,
 } from "@/lib/fields";
+import { displayName, fetchContacts, findDuplicates, invalidateContacts } from "@/lib/client/contacts";
 import { getCard, listCards, removeCard, updateCard, type QueuedCard } from "@/lib/client/queue";
 
 const MULTILINE = new Set(["address", "other", "notes"]);
@@ -46,6 +48,17 @@ export function ReviewScreen({ id, defaultOwner }: { id: string; defaultOwner: s
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [saved, setSaved] = useState<ContactRow[]>([]);
+  // "" = save as a new contact; otherwise the id of the contact to update.
+  const [mergeInto, setMergeInto] = useState("");
+
+  useEffect(() => {
+    // Saved contacts, to warn about duplicates. If this fails, review still works.
+    fetchContacts().then(setSaved, () => {});
+  }, []);
+
+  const duplicates = useMemo(() => (draft ? findDuplicates(draft, saved).slice(0, 3) : []), [draft, saved]);
+  const mergeTarget = duplicates.find((d) => d.id === mergeInto);
 
   useEffect(() => {
     getCard(id).then((c) => {
@@ -77,12 +90,14 @@ export function ReviewScreen({ id, defaultOwner }: { id: string; defaultOwner: s
     const form = new FormData();
     form.append("id", id);
     form.append("contact", JSON.stringify(draft));
+    if (mergeTarget) form.append("mergeInto", mergeTarget.id);
     form.append("front", card.front, "front.jpg");
     if (card.back) form.append("back", card.back, "back.jpg");
     try {
       const res = await fetch("/api/contacts", { method: "POST", body: form });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? `Error ${res.status}`);
+      invalidateContacts();
       await updateCard(id, { status: "saved", error: undefined });
       await goToNext();
     } catch (err) {
@@ -190,6 +205,27 @@ export function ReviewScreen({ id, defaultOwner }: { id: string; defaultOwner: s
         <div className="fixed inset-x-0 bottom-0 z-10 border-t border-stone-200 bg-white px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
           <div className="mx-auto flex max-w-xl flex-col gap-2">
             {error && <p className="text-sm text-red-700">Not saved: {error}</p>}
+            {duplicates.length > 0 && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-2 text-sm">
+                <p className="font-medium text-amber-900">Possible duplicate already in the Sheet:</p>
+                <label className="mt-1 flex items-center gap-2">
+                  <input type="radio" checked={!mergeTarget} onChange={() => setMergeInto("")} />
+                  Save as a new contact
+                </label>
+                {duplicates.map((d) => (
+                  <label key={d.id} className="mt-1 flex items-start gap-2">
+                    <input type="radio" className="mt-1" checked={mergeInto === d.id} onChange={() => setMergeInto(d.id)} />
+                    <span>
+                      Update <strong>{displayName(d) || d.email}</strong>
+                      {d.company && ` · ${d.company}`}
+                      <span className="block text-xs text-stone-600">
+                        {[d.event, d.scanned_at.slice(0, 10), d.status].filter(Boolean).join(" · ")}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
             <div className="flex gap-2">
               <button
                 onClick={discard}
@@ -203,7 +239,7 @@ export function ReviewScreen({ id, defaultOwner }: { id: string; defaultOwner: s
                 disabled={saving}
                 className="flex-1 rounded-xl bg-brand px-4 py-3 text-lg font-semibold text-white active:bg-brand-dark disabled:bg-mist"
               >
-                {saving ? "Saving…" : "Approve & save"}
+                {saving ? "Saving…" : mergeTarget ? "Approve & update" : "Approve & save"}
               </button>
             </div>
           </div>
