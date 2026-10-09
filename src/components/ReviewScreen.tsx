@@ -179,6 +179,28 @@ export function ReviewScreen({ id, defaultOwner }: { id: string; defaultOwner: s
         </p>
       )}
 
+      {duplicates.length > 0 && !isSaved && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
+          <p className="font-medium text-amber-900">Possible duplicate already in the Sheet:</p>
+          <label className="mt-1 flex items-center gap-2">
+            <input type="radio" checked={!mergeTarget} onChange={() => setMergeInto("")} />
+            Save as a new contact
+          </label>
+          {duplicates.map((d) => (
+            <label key={d.id} className="mt-1 flex items-start gap-2">
+              <input type="radio" className="mt-1" checked={mergeInto === d.id} onChange={() => setMergeInto(d.id)} />
+              <span>
+                Update <strong>{displayName(d) || d.email}</strong>
+                {d.company && ` · ${d.company}`}
+                <span className="block text-xs text-stone-600">
+                  {[d.event, d.scanned_at.slice(0, 10), d.status].filter(Boolean).join(" · ")}
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
+
       <fieldset disabled={isSaved || saving} className="flex flex-col gap-3">
         <h2 className="font-semibold text-brand">Contact</h2>
         {EXTRACTED_FIELDS.map((f) => (
@@ -221,27 +243,6 @@ export function ReviewScreen({ id, defaultOwner }: { id: string; defaultOwner: s
           className="fixed inset-x-0 bottom-0 z-10 border-t border-stone-200 bg-white px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
           <div className="mx-auto flex max-w-xl flex-col gap-2">
             {error && <p className="text-sm text-red-700">Not saved: {error}</p>}
-            {duplicates.length > 0 && (
-              <div className="rounded-lg border border-amber-300 bg-amber-50 p-2 text-sm">
-                <p className="font-medium text-amber-900">Possible duplicate already in the Sheet:</p>
-                <label className="mt-1 flex items-center gap-2">
-                  <input type="radio" checked={!mergeTarget} onChange={() => setMergeInto("")} />
-                  Save as a new contact
-                </label>
-                {duplicates.map((d) => (
-                  <label key={d.id} className="mt-1 flex items-start gap-2">
-                    <input type="radio" className="mt-1" checked={mergeInto === d.id} onChange={() => setMergeInto(d.id)} />
-                    <span>
-                      Update <strong>{displayName(d) || d.email}</strong>
-                      {d.company && ` · ${d.company}`}
-                      <span className="block text-xs text-stone-600">
-                        {[d.event, d.scanned_at.slice(0, 10), d.status].filter(Boolean).join(" · ")}
-                      </span>
-                    </span>
-                  </label>
-                ))}
-              </div>
-            )}
             <div className="flex gap-2">
               <button
                 onClick={discard}

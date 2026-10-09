@@ -92,6 +92,8 @@ The app creates the `Contacts` tab and header row by itself on the first save.
 3. Deploy. Note the domain (for example `cardscan-xyz.vercel.app`) and make sure the redirect URI in step 3 uses it.
 4. Functions run in Singapore (`sin1`, set in `vercel.json`).
 
+Sign in only on the production URL (the one you added as a redirect URI). Vercel's preview links for other branches have different addresses, and Google will refuse them with "redirect_uri_mismatch".
+
 Vercel's free Hobby plan is meant for non-commercial use. Upgrade to Pro if that matters to you.
 
 ## Environment variables
