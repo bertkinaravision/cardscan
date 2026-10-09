@@ -34,6 +34,9 @@ export function geminiExtractor(model: string): VisionExtractor {
         });
         return res.text ?? "";
       } catch (err) {
+        // The free tier's daily quota won't come back by retrying every few seconds.
+        if (err instanceof ApiError && err.status === 429 && /per ?day|PerDay|daily/i.test(err.message))
+          throw new Error("Gemini's free daily limit is used up. Cards will read again tomorrow (tap Retry), or switch to a paid model.");
         // 429 = rate limit, 503 = model temporarily overloaded: both are worth retrying.
         if (err instanceof ApiError && (err.status === 429 || err.status === 503)) throw new LlmRateLimitError(err.message);
         if (err instanceof ApiError && err.status === 404)

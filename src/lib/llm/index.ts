@@ -1,5 +1,5 @@
 import "server-only";
-import { extractionSchema, type Extraction } from "@/lib/fields";
+import { EXTRACTED_FIELDS, extractionSchema, type ExtractedField, type Extraction } from "@/lib/fields";
 import { anthropicExtractor } from "./anthropic";
 import { geminiExtractor } from "./gemini";
 import { mockExtractor } from "./mock";
@@ -35,11 +35,22 @@ export async function extractCard(images: CardImage[]): Promise<Extraction> {
   } catch {
     throw new Error("The model did not return valid JSON.");
   }
-  const parsed = extractionSchema.safeParse(json);
+  const parsed = extractionSchema.safeParse(normalize(json));
   if (!parsed.success) throw new Error("The model's answer did not match the expected fields.");
-  const data = parsed.data;
-  for (const key of Object.keys(data) as (keyof Extraction)[]) {
-    if (typeof data[key] === "string") (data as Record<string, unknown>)[key] = (data[key] as string).trim();
+  return parsed.data;
+}
+
+// Small slips in the model's answer (a missing field, null instead of "", a number, an unknown
+// field name in low_confidence) shouldn't fail the whole card; the person reviews it anyway.
+export function normalize(json: unknown): unknown {
+  if (!json || typeof json !== "object" || Array.isArray(json)) return json;
+  const src = json as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const f of EXTRACTED_FIELDS) {
+    const v = src[f];
+    out[f] = v == null ? "" : Array.isArray(v) ? v.join("; ") : String(v).trim();
   }
-  return data;
+  const lc = Array.isArray(src.low_confidence) ? src.low_confidence : [];
+  out.low_confidence = [...new Set(lc.filter((f): f is ExtractedField => (EXTRACTED_FIELDS as readonly unknown[]).includes(f)))];
+  return out;
 }

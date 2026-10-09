@@ -49,12 +49,31 @@ async function ensureSheet(): Promise<SheetInfo> {
       valueInputOption: "RAW",
       requestBody: { values: [headers] },
     });
-    // Dropdown for the status column.
+    // Dropdown for the status column; dates shown (and read back) as yyyy-mm-dd even when typed
+    // by hand in Sheets, so the app's date fields and sorting keep working; bold header.
     const statusCol = headers.indexOf("status");
+    const dateFormats = ["date_met", "next_action_date"].map((c) => {
+      const col = headers.indexOf(c);
+      return {
+        repeatCell: {
+          range: { sheetId, startRowIndex: 1, startColumnIndex: col, endColumnIndex: col + 1 },
+          cell: { userEnteredFormat: { numberFormat: { type: "DATE", pattern: "yyyy-mm-dd" } } },
+          fields: "userEnteredFormat.numberFormat",
+        },
+      };
+    });
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId,
       requestBody: {
         requests: [
+          ...dateFormats,
+          {
+            repeatCell: {
+              range: { sheetId, startRowIndex: 0, endRowIndex: 1 },
+              cell: { userEnteredFormat: { textFormat: { bold: true } } },
+              fields: "userEnteredFormat.textFormat.bold",
+            },
+          },
           {
             setDataValidation: {
               range: { sheetId, startRowIndex: 1, startColumnIndex: statusCol, endColumnIndex: statusCol + 1 },
@@ -80,8 +99,8 @@ function toRow(headers: string[], values: string[]): ContactRow {
   return row;
 }
 
-function toValues(headers: string[], row: Partial<ContactRow>, base: string[] = []): string[] {
-  return headers.map((h, i) => (h in row ? (row[h as SheetColumn] ?? "") : (base[i] ?? "")));
+function toValues(headers: string[], row: Partial<ContactRow>): string[] {
+  return headers.map((h) => row[h as SheetColumn] ?? "");
 }
 
 async function readAll(): Promise<{ info: SheetInfo; rows: { rowNumber: number; values: string[] }[] }> {
@@ -118,26 +137,48 @@ export async function appendContact(row: ContactRow): Promise<void> {
   });
 }
 
+// Finds a contact's row, then re-reads its id cell right before a write: if someone deleted a row
+// meanwhile, the rows have shifted and we look again instead of touching the wrong contact.
+async function locate(id: string) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { info, rows } = await readAll();
+    const idCol = info.headers.indexOf("id");
+    const found = rows.find((r) => r.values[idCol] === id);
+    if (!found) return null;
+    const check = await sheetsClient().spreadsheets.values.get({
+      spreadsheetId: requireEnv("SHEET_ID"),
+      range: `${quotedTab()}!${columnLetter(idCol)}${found.rowNumber}`,
+    });
+    if (String(check.data.values?.[0]?.[0] ?? "") === id) return { info, found };
+  }
+  throw new Error("The Sheet is changing right now. Please try again.");
+}
+
+// Writes only the changed cells, so edits made directly in the Sheet meanwhile are kept.
 export async function updateContact(id: string, patch: Partial<ContactRow>): Promise<ContactRow | null> {
-  const { info, rows } = await readAll();
-  const idCol = info.headers.indexOf("id");
-  const found = rows.find((r) => r.values[idCol] === id);
-  if (!found) return null;
-  const values = toValues(info.headers, { ...patch, id, last_updated: new Date().toISOString() }, found.values);
-  await sheetsClient().spreadsheets.values.update({
+  const loc = await locate(id);
+  if (!loc) return null;
+  const { info, found } = loc;
+  const changes: Partial<ContactRow> = { ...patch, last_updated: new Date().toISOString() };
+  delete changes.id;
+  const data = Object.entries(changes)
+    .filter(([col]) => info.headers.includes(col))
+    .map(([col, value]) => ({
+      range: `${quotedTab()}!${columnLetter(info.headers.indexOf(col))}${found.rowNumber}`,
+      values: [[value ?? ""]],
+    }));
+  await sheetsClient().spreadsheets.values.batchUpdate({
     spreadsheetId: requireEnv("SHEET_ID"),
-    range: `${quotedTab()}!A${found.rowNumber}`,
-    valueInputOption: "RAW",
-    requestBody: { values: [values] },
+    // RAW so text can never be run as a Sheets formula.
+    requestBody: { valueInputOption: "RAW", data },
   });
-  return toRow(info.headers, values);
+  return { ...toRow(info.headers, found.values), ...changes, id } as ContactRow;
 }
 
 export async function deleteContactRow(id: string): Promise<ContactRow | null> {
-  const { info, rows } = await readAll();
-  const idCol = info.headers.indexOf("id");
-  const found = rows.find((r) => r.values[idCol] === id);
-  if (!found) return null;
+  const loc = await locate(id);
+  if (!loc) return null;
+  const { info, found } = loc;
   await sheetsClient().spreadsheets.batchUpdate({
     spreadsheetId: requireEnv("SHEET_ID"),
     requestBody: {

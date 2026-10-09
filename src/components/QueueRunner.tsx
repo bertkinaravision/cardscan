@@ -52,9 +52,13 @@ async function drainQueue() {
     if (res.status === 429) {
       await updateCard(next.id, { status: "queued", error: body.error ?? "Rate limited. Will retry." });
       await sleep(20_000);
+    } else if (res.status === 401) {
+      // Signed out (session ended): keep the card queued so it continues after signing in again.
+      await updateCard(next.id, { status: "queued", error: "Signed out. Sign in again to continue." });
+      return;
     } else if (!res.ok) {
       await updateCard(next.id, { status: "failed", error: body.error ?? `Error ${res.status}` });
-      if (res.status === 401 || res.status === 403) return;
+      if (res.status === 403) return;
     } else {
       await updateCard(next.id, { status: "review", error: undefined, extraction: body.extraction });
     }

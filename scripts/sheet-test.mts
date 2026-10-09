@@ -84,6 +84,19 @@ nock("https://sheets.googleapis.com")
     tab!.rows[startRow - 1] = body.values[0];
     return {};
   })
+  .post("/v4/spreadsheets/sheet1/values:batchUpdate")
+  .reply(200, (_uri, body: { valueInputOption: string; data: { range: string; values: string[][] }[] }) => {
+    assert.equal(body.valueInputOption, "RAW");
+    for (const d of body.data) {
+      const m = decodeURIComponent(d.range).match(/^'?(.*?)'?!([A-Z]+)(\d+)$/)!;
+      const tab = tabs.find((t) => t.title === m[1])!;
+      const col = [...m[2]].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
+      const row = tab.rows[Number(m[3]) - 1];
+      while (row.length <= col) row.push("");
+      row[col] = d.values[0][0];
+    }
+    return {};
+  })
   .post(/\/v4\/spreadsheets\/sheet1\/values\/.+:append/)
   .reply(200, (uri, body: { values: string[][] }) => {
     assert.match(uri, /valueInputOption=RAW/);
@@ -125,13 +138,15 @@ assert.equal(list[1].first_name, "Kenji");
 assert.equal(contacts.rows[2][header.indexOf("first_name")], "Kenji", "written into the reordered column");
 assert.equal(validations, 1, "no second dropdown when header is complete");
 
-// 3. Update keeps unrelated cells, including the person's own column.
+// 3. Update keeps unrelated cells, including the person's own column and hand edits made meanwhile.
+contacts.rows[1][header.indexOf("notes")] = "typed in the Sheet";
 const updated = await updateContact("a1", { status: "In conversation", next_action: "Call" });
 assert.equal(updated?.status, "In conversation");
 assert.equal(contacts.rows[1][header.indexOf("My column")], "keep me");
 assert.equal(contacts.rows[1][header.indexOf("first_name")], "Rachel");
 assert.ok(contacts.rows[1][header.indexOf("last_updated")], "last_updated set");
 assert.equal((await getContact("a1"))?.next_action, "Call");
+assert.equal(contacts.rows[1][header.indexOf("notes")], "typed in the Sheet", "hand edit in the Sheet kept");
 assert.equal(await updateContact("nope", { status: "Closed" }), null);
 
 // 4. Delete removes exactly that row.
@@ -188,3 +203,15 @@ assert.match(explainGoogleError({ code: 403, message: "Request had insufficient 
 assert.match(explainGoogleError({ code: 404, message: "File not found: folder1." }, "drive").message, /DRIVE_FOLDER_ID/);
 assert.match(explainGoogleError({ code: 403, message: "Google Sheets API has not been used in project 1 before or it is disabled." }, "sheet").message, /not enabled/);
 console.log("Error message tests passed.");
+
+// 8. Lenient reading of the model's answer.
+const { normalize } = await import("../src/lib/llm/index");
+const { extractionSchema } = await import("../src/lib/fields");
+const n = extractionSchema.parse(normalize({ first_name: " Ann ", last_name: null, phone: 6512345678, other: ["a", "b"], low_confidence: ["email", "bogus", "email"] }));
+assert.equal(n.first_name, "Ann");
+assert.equal(n.last_name, "");
+assert.equal(n.phone, "6512345678");
+assert.equal(n.other, "a; b");
+assert.equal(n.company, "", "missing field filled");
+assert.deepEqual(n.low_confidence, ["email"]);
+console.log("Model answer normalisation tests passed.");
