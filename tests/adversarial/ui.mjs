@@ -211,6 +211,23 @@ test("UI-12", "Follow-up edited on stale data", async () => {
   await ctx.close();
 });
 
+test("UI-12b", "Contact details edited on stale data", async () => {
+  const c = await cookie();
+  const { id } = await save(c, { contact: emptyContact({ first_name: "Stale", email: "old@x.example", company: "Old Co" }) });
+  const { ctx, page } = await open();
+  await page.goto(`${BASE}/contacts`);
+  await page.getByText("Stale").first().click();
+  await page.getByRole("button", { name: "Edit details" }).click();
+  // A colleague fixes the email meanwhile; this person only changes the company.
+  await fetch(`${BASE}/api/contacts/${id}`, { method: "PATCH", headers: { cookie: c, "content-type": "application/json" }, body: JSON.stringify({ email: "new@x.example" }) });
+  await page.getByRole("textbox", { name: "Company" }).fill("New Co");
+  await page.getByRole("button", { name: "Save contact details" }).click();
+  await page.waitForTimeout(1500);
+  const saved = (await listContacts(c)).body.contacts.find((x) => x.id === id);
+  record("UI-12b", "Edit details while a colleague changes another field", "both changes kept", `email "${saved.email}", company "${saved.company}"`, saved.email === "new@x.example" && saved.company === "New Co");
+  await ctx.close();
+});
+
 test("UI-13", "Very long notes on review", async () => {
   const { ctx, page } = await open();
   await addCard(page);

@@ -289,6 +289,10 @@ function ContactItem({
   );
 }
 
+const FOLLOW_UP_FIELDS = ["owner", "next_action", "next_action_date", "notes"] as const;
+type FollowUpField = (typeof FOLLOW_UP_FIELDS)[number];
+const DETAIL_FIELDS = [...EXTRACTED_FIELDS, "event", "date_met"] as const;
+
 function ContactDetails({
   contact: c,
   busy,
@@ -301,17 +305,20 @@ function ContactDetails({
   onDelete: () => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [followUp, setFollowUp] = useState({
-    owner: c.owner,
-    next_action: c.next_action,
-    next_action_date: c.next_action_date,
-    notes: c.notes,
-  });
+  // Only what the person typed is kept here; the rest shows the contact's latest values, and only
+  // changed fields are saved, so edits made meanwhile by someone else are not overwritten.
+  const [edits, setEdits] = useState<Partial<Record<FollowUpField, string>>>({});
+  const followUp = Object.fromEntries(FOLLOW_UP_FIELDS.map((f) => [f, edits[f] ?? c[f]])) as Record<FollowUpField, string>;
+  const followUpPatch = Object.fromEntries(Object.entries(edits).filter(([f, v]) => v !== c[f as FollowUpField]));
+  const followUpChanged = Object.keys(followUpPatch).length > 0;
+  const setFollowUp = (f: FollowUpField, v: string) => setEdits((e) => ({ ...e, [f]: v }));
   const [form, setForm] = useState<Record<string, string>>({});
-  const followUpChanged = (Object.keys(followUp) as (keyof typeof followUp)[]).some((k) => followUp[k] !== c[k]);
+  const [formStart, setFormStart] = useState<Record<string, string>>({});
 
   const startEdit = () => {
-    setForm(Object.fromEntries([...EXTRACTED_FIELDS, "event", "date_met"].map((f) => [f, c[f as keyof ContactRow]])));
+    const start = Object.fromEntries(DETAIL_FIELDS.map((f) => [f, c[f]]));
+    setForm(start);
+    setFormStart(start);
     setEditing(true);
   };
 
@@ -346,7 +353,7 @@ function ContactDetails({
 
       {editing ? (
         <div className="flex flex-col gap-2">
-          {[...EXTRACTED_FIELDS, "event", "date_met"].map((f) => (
+          {DETAIL_FIELDS.map((f) => (
             <label key={f} className="flex flex-col gap-1 text-stone-600">
               {FIELD_LABELS[f]}
               <input
@@ -365,7 +372,8 @@ function ContactDetails({
             <button
               disabled={busy}
               onClick={async () => {
-                if (await onSave(form as Partial<ContactInput>)) setEditing(false);
+                const changed = Object.fromEntries(Object.entries(form).filter(([f, v]) => v !== formStart[f]));
+                if (Object.keys(changed).length === 0 || (await onSave(changed as Partial<ContactInput>))) setEditing(false);
               }}
               className="flex-1 rounded-lg bg-brand-dark px-3 py-2 font-medium text-on-accent disabled:bg-mist"
             >
@@ -380,7 +388,7 @@ function ContactDetails({
               Next action
               <NextActionPicker
                 value={followUp.next_action}
-                onChange={(next_action) => setFollowUp((v) => ({ ...v, next_action }))}
+                onChange={(v) => setFollowUp("next_action", v)}
               />
             </label>
             <div className="grid grid-cols-2 gap-2">
@@ -389,7 +397,7 @@ function ContactDetails({
                 <input
                   type="date"
                   value={followUp.next_action_date}
-                  onChange={(e) => setFollowUp((v) => ({ ...v, next_action_date: e.target.value }))}
+                  onChange={(e) => setFollowUp("next_action_date", e.target.value)}
                   className="w-full min-w-0 rounded-lg border border-stone-300 bg-white px-3 py-2 text-ink"
                 />
               </label>
@@ -398,7 +406,7 @@ function ContactDetails({
                 <input
                   value={followUp.owner}
                 list="cardscan-owners"
-                  onChange={(e) => setFollowUp((v) => ({ ...v, owner: e.target.value }))}
+                  onChange={(e) => setFollowUp("owner", e.target.value)}
                   className="w-full min-w-0 rounded-lg border border-stone-300 bg-white px-3 py-2 text-ink"
                 />
               </label>
@@ -408,14 +416,16 @@ function ContactDetails({
               <textarea
                 rows={3}
                 value={followUp.notes}
-                onChange={(e) => setFollowUp((v) => ({ ...v, notes: e.target.value }))}
+                onChange={(e) => setFollowUp("notes", e.target.value)}
                 className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-ink"
               />
             </label>
             {followUpChanged && (
               <button
                 disabled={busy}
-                onClick={() => onSave(followUp)}
+                onClick={async () => {
+                  if (await onSave(followUpPatch)) setEdits({});
+                }}
                 className="rounded-lg bg-brand-dark px-3 py-2 font-medium text-on-accent disabled:bg-mist"
               >
                 Save follow-up
