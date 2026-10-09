@@ -52,12 +52,21 @@ export async function POST(req: Request) {
       if (front) uploaded.front = await uploadImage(user.googleAccessToken, `${safeName} - front - ${id}.jpg`, front);
       if (back) uploaded.back = await uploadImage(user.googleAccessToken, `${safeName} - back - ${id}.jpg`, back);
       if (existing) {
-        const updated = await updateContact(existing.id, {
-          ...mergeContact(existing, c, uploaded, now),
-          source_card_ids: [existing.source_card_ids, id].filter(Boolean).join(","),
-        });
-        if (!updated) throw new HttpError(404, "The contact to update was deleted meanwhile. Save this card as a new contact.");
-        return Response.json({ id: existing.id, merged: true });
+        // Another card may be merged into the same contact at the same moment; the later write
+        // would then drop this card's notes and photos. Check afterwards and merge again on top.
+        let current: ContactRow | undefined = existing;
+        for (let attempt = 0; attempt < 3 && current; attempt++) {
+          if (current.source_card_ids.split(",").includes(id)) return Response.json({ id: existing.id, merged: true });
+          const updated = await updateContact(current.id, {
+            ...mergeContact(current, c, uploaded, now),
+            source_card_ids: [current.source_card_ids, id].filter(Boolean).join(","),
+          });
+          if (!updated) break;
+          current = (await listContacts()).find((r) => r.id === existing.id);
+        }
+        if (current?.source_card_ids.split(",").includes(id)) return Response.json({ id: existing.id, merged: true });
+        if (!current) throw new HttpError(404, "The contact to update was deleted meanwhile. Save this card as a new contact.");
+        throw new Error("The contact is being changed by someone else right now. Tap Approve again.");
       }
       const { duplicate } = await appendContact(newRow(id, c, user.email, now, uploaded), layout);
       if (duplicate) {
