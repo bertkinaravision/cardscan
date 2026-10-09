@@ -6,17 +6,11 @@ import { NEXT_ACTIONS } from "@/lib/fields";
 const OTHER = "__other";
 
 // Dropdown of common follow-ups; "Other…" opens a text box for anything else.
-export function NextActionPicker({
-  value,
-  onChange,
-  className = "",
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  className?: string;
-}) {
+export function NextActionPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   const isPreset = (NEXT_ACTIONS as readonly string[]).includes(value);
   const [custom, setCustom] = useState(!!value && !isPreset);
+  // Focus the text box only when the person picks "Other…", not when a saved custom value is shown.
+  const [justPicked, setJustPicked] = useState(false);
 
   return (
     <div className="flex flex-col gap-2">
@@ -26,13 +20,14 @@ export function NextActionPicker({
         onChange={(e) => {
           if (e.target.value === OTHER) {
             setCustom(true);
+            setJustPicked(true);
             if (isPreset) onChange("");
           } else {
             setCustom(false);
             onChange(e.target.value);
           }
         }}
-        className={`rounded-lg border border-stone-300 bg-white px-3 py-2 text-ink ${className}`}
+        className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-ink"
       >
         <option value="">None</option>
         {NEXT_ACTIONS.map((a) => (
@@ -42,7 +37,7 @@ export function NextActionPicker({
       </select>
       {custom && (
         <input
-          autoFocus
+          autoFocus={justPicked}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Describe the next action"

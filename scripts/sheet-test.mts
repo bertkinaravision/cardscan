@@ -21,6 +21,7 @@ type Tab = { title: string; sheetId: number; rows: string[][] };
 const tabs: Tab[] = [{ title: "Sheet1", sheetId: 0, rows: [] }];
 const driveFiles = new Map<string, string>();
 let validations = 0;
+const devMeta: { metadataId: number; metadataKey: string; metadataValue: string }[] = [];
 let busy = 0; // how many upcoming reads/appends answer 429 (Google's "too many requests")
 
 function parseRange(range: string) {
@@ -47,7 +48,10 @@ nock("https://www.googleapis.com")
 nock("https://sheets.googleapis.com")
   .persist()
   .get(/\/v4\/spreadsheets\/sheet1\?/)
-  .reply(200, () => ({ sheets: tabs.map((t) => ({ properties: { title: t.title, sheetId: t.sheetId } })) }))
+  .reply(200, () => ({
+    sheets: tabs.map((t) => ({ properties: { title: t.title, sheetId: t.sheetId } })),
+    developerMetadata: devMeta,
+  }))
   .post("/v4/spreadsheets/sheet1:batchUpdate")
   .reply(200, (_uri, body: { requests: Record<string, unknown>[] }) => ({
     replies: body.requests.map((r) => {
@@ -58,6 +62,15 @@ nock("https://sheets.googleapis.com")
         return { addSheet: { properties: { title, sheetId: tab.sheetId } } };
       }
       if (r.setDataValidation) validations++;
+      if (r.createDeveloperMetadata) {
+        const m = (r.createDeveloperMetadata as { developerMetadata: { metadataKey: string; metadataValue: string } }).developerMetadata;
+        devMeta.push({ metadataId: devMeta.length + 1, metadataKey: m.metadataKey, metadataValue: m.metadataValue });
+      }
+      if (r.updateDeveloperMetadata) {
+        const u = r.updateDeveloperMetadata as { dataFilters: { developerMetadataLookup: { metadataId: number } }[]; developerMetadata: { metadataValue: string } };
+        const m = devMeta.find((d) => d.metadataId === u.dataFilters[0].developerMetadataLookup.metadataId)!;
+        m.metadataValue = u.developerMetadata.metadataValue;
+      }
       if (r.deleteDimension) {
         const { range } = r.deleteDimension as { range: { sheetId: number; startIndex: number; endIndex: number } };
         const tab = tabs.find((t) => t.sheetId === range.sheetId)!;
@@ -257,7 +270,6 @@ assert.equal(headerKey("My notes column"), null);
 const h: string[] = contacts.rows[0];
 const rename: Record<string, string> = { first_name: "First name", last_name: "Last name", event: "Event / place met", status: "Status" };
 h.forEach((v, i) => (h[i] = rename[v] ?? v));
-await new Promise((r) => setTimeout(r, 15_100)); // layout cache expires
 await appendContact(row("r1", { first_name: "Pretty", last_name: "Headers", event: "Expo", status: "Contacted" }));
 const pretty = (await listContacts()).find((c) => c.id === "r1")!;
 assert.deepEqual([pretty.first_name, pretty.last_name, pretty.event, pretty.status], ["Pretty", "Headers", "Expo", "Contacted"]);
@@ -265,3 +277,23 @@ assert.equal(contacts.rows[0].filter((x) => x === "first_name").length, 0, "no d
 await updateContact("r1", { status: "Closed" });
 assert.equal(contacts.rows.find((r) => r[0] === "r1")![h.indexOf("Status")], "Closed");
 console.log("Readable header tests passed.");
+
+// 12. A Sheet made by an older version (all columns there, no setup marker) gets the dropdowns once.
+devMeta.length = 0;
+const before = validations;
+await listContacts();
+assert.equal(validations, before + 2, "dropdowns applied to an older Sheet");
+await listContacts();
+assert.equal(validations, before + 2, "and only once");
+assert.equal(devMeta[0]?.metadataValue, "2");
+
+// 13. Two headers for the same column: the first one is used for reading and writing.
+const hdr: string[] = contacts.rows[0];
+hdr.push("email");
+const emailCols = hdr.map((v, i) => [v, i] as const).filter(([v]) => headerKey(v) === "email").map(([, i]) => i);
+assert.equal(emailCols.length, 2);
+await updateContact("r1", { email: "new@x.example" });
+const r1 = contacts.rows.find((r) => r[0] === "r1")!;
+assert.equal(r1[emailCols[0]], "new@x.example");
+assert.equal((await listContacts()).find((c) => c.id === "r1")!.email, "new@x.example");
+console.log("Setup marker and duplicate header tests passed.");

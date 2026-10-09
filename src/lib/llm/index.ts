@@ -49,13 +49,20 @@ async function extractOnce(images: CardImage[]): Promise<Extraction> {
 }
 
 export async function extractCard(images: CardImage[]): Promise<Extraction> {
+  const started = Date.now();
   let data = await extractOnce(images);
   // Names must be in Latin letters. The model now and then copies a Chinese/Japanese name
   // as-is; asking once more usually fixes it. If not, keep it but flag it for review.
-  if (CJK.test(data.first_name + data.last_name)) {
-    const again = await extractOnce(images).catch(() => null);
+  // (Only when there is time left: the request may run at most 60 seconds.)
+  if (CJK.test(data.first_name + data.last_name) && Date.now() - started < 20_000) {
+    const again = await extractOnce(images).catch((err) => {
+      console.warn("[extract] second attempt failed:", err instanceof Error ? err.message : err);
+      return null;
+    });
     if (again && !CJK.test(again.first_name + again.last_name)) data = again;
     else data.low_confidence = [...new Set([...data.low_confidence, "first_name" as const, "last_name" as const])];
+  } else if (CJK.test(data.first_name + data.last_name)) {
+    data.low_confidence = [...new Set([...data.low_confidence, "first_name" as const, "last_name" as const])];
   }
   return data;
 }

@@ -3,7 +3,7 @@ import { deleteImages, uploadImage } from "@/lib/server/google";
 import { readImage } from "@/lib/server/images";
 import { mergeContact, type Uploaded } from "@/lib/server/merge";
 import { errorResponse, HttpError, requireUser } from "@/lib/server/session";
-import { appendContact, listContacts, updateContact } from "@/lib/server/sheet";
+import { appendContact, listContacts, listContactsWithLayout, updateContact } from "@/lib/server/sheet";
 
 export const maxDuration = 60;
 
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
     if (!parsed.success) throw new HttpError(400, "Some fields are invalid.");
 
     // A retry after a lost response must not save or merge the same card twice.
-    const all = await listContacts();
+    const { contacts: all, layout } = await listContactsWithLayout();
     const already = all.find((r) => r.id === id || r.source_card_ids.split(",").includes(id));
     if (already) return Response.json({ id: already.id, alreadySaved: true });
 
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
         if (!updated) throw new HttpError(404, "The contact to update was deleted meanwhile. Save this card as a new contact.");
         return Response.json({ id: existing.id, merged: true });
       }
-      await appendContact(newRow(id, c, user.email, now, uploaded));
+      await appendContact(newRow(id, c, user.email, now, uploaded), layout);
       return Response.json({ id });
     } catch (err) {
       // The write may have gone through even though its reply was lost: then keep the photos and report success.

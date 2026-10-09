@@ -44,7 +44,8 @@ export function geminiExtractor(models: string[]): VisionExtractor {
     } catch (err) {
       if (err instanceof ApiError && err.status === 429 && /per ?day|PerDay|daily/i.test(err.message))
         throw new ModelUnavailable(`daily limit reached for ${model}`);
-      if (err instanceof ApiError && err.status === 404) throw new ModelUnavailable(`${model} not available`);
+      if (err instanceof ApiError && err.status === 404)
+        throw new ModelUnavailable(`${model} does not exist or was retired (check LLM_MODEL / LLM_FALLBACK_MODELS)`);
       // 429 = rate limit, 503 = model temporarily overloaded: both are worth retrying.
       if (err instanceof ApiError && (err.status === 429 || err.status === 503)) throw new LlmRateLimitError(err.message);
       if (err instanceof ApiError && (err.status === 400 || err.status === 403) && /api key|API_KEY/i.test(err.message))

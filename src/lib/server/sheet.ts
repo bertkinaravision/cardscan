@@ -28,29 +28,24 @@ for (const c of SHEET_COLUMNS) {
 export const headerKey = (h: string): SheetColumn | null => HEADER_NAMES.get(squash(h)) ?? null;
 
 // headers: the header row as written; keys: which of our columns each one is (null = a column of your own).
-type SheetInfo = { sheetId: number; headers: string[]; keys: (SheetColumn | null)[] };
+export type SheetInfo = { sheetId: number; headers: string[]; keys: (SheetColumn | null)[] };
 
-// The tab layout rarely changes, so it is remembered for a few seconds: saving a batch of cards
-// then needs far fewer Sheets requests (Google allows about 60 per minute).
-let cached: { info: SheetInfo; at: number } | null = null;
-const CACHE_MS = 15_000;
+// Bump when the formatting applied to the tab changes, so existing Sheets get it once too.
+const SETUP_VERSION = "2";
+const SETUP_KEY = "cardscan_setup";
 
 // Makes sure the tab and header row exist. Adds any of our columns that are missing
 // (to the right of what is there), so a hand-made Sheet keeps working.
 async function ensureSheet(): Promise<SheetInfo> {
-  if (cached && Date.now() - cached.at < CACHE_MS) return cached.info;
-  const info = await loadSheetInfo();
-  cached = { info, at: Date.now() };
-  return info;
-}
-
-async function loadSheetInfo(): Promise<SheetInfo> {
   const sheets = sheetsClient();
   const spreadsheetId = requireEnv("SHEET_ID");
 
-  const meta = await sheets.spreadsheets.get({ spreadsheetId, fields: "sheets.properties" }).catch((err) => {
-    throw explainGoogleError(err, "sheet");
-  });
+  const meta = await sheets.spreadsheets
+    .get({ spreadsheetId, fields: "sheets.properties,developerMetadata(metadataId,metadataKey,metadataValue)" })
+    .catch((err) => {
+      throw explainGoogleError(err, "sheet");
+    });
+  const setupMeta = meta.data.developerMetadata?.find((m) => m.metadataKey === SETUP_KEY);
   let sheetId = meta.data.sheets?.find((s) => s.properties?.title === tabName())?.properties?.sheetId;
   if (sheetId == null) {
     const res = await sheets.spreadsheets.batchUpdate({
@@ -62,7 +57,8 @@ async function loadSheetInfo(): Promise<SheetInfo> {
 
   const headerRes = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${quotedTab()}!1:1` });
   const existing = (headerRes.data.values?.[0] ?? []).map((h) => String(h).trim());
-  const existingKeys = existing.map(headerKey);
+  // If two headers mean the same column (say "Email" and "email"), only the first one is used.
+  const existingKeys = existing.map(headerKey).map((k, i, all) => (k && all.indexOf(k) === i ? k : null));
   const missing = SHEET_COLUMNS.filter((c) => !existingKeys.includes(c));
   const headers = [...existing, ...missing];
   const keys: (SheetColumn | null)[] = [...existingKeys, ...missing];
@@ -74,6 +70,10 @@ async function loadSheetInfo(): Promise<SheetInfo> {
       valueInputOption: "RAW",
       requestBody: { values: [headers] },
     });
+  }
+  // Formatting is applied when columns are added, and once to Sheets set up by an older version
+  // (marked in the Sheet's hidden developer metadata), so formatting you change later is left alone.
+  if (missing.length > 0 || setupMeta?.metadataValue !== SETUP_VERSION) {
     // Dropdown for the status column; dates shown (and read back) as yyyy-mm-dd even when typed
     // by hand in Sheets, so the app's date fields and sorting keep working; bold header.
     const statusCol = keys.indexOf("status");
@@ -110,6 +110,24 @@ async function loadSheetInfo(): Promise<SheetInfo> {
               },
             },
           },
+          setupMeta?.metadataId != null
+            ? {
+                updateDeveloperMetadata: {
+                  dataFilters: [{ developerMetadataLookup: { metadataId: setupMeta.metadataId } }],
+                  developerMetadata: { metadataValue: SETUP_VERSION },
+                  fields: "metadataValue",
+                },
+              }
+            : {
+                createDeveloperMetadata: {
+                  developerMetadata: {
+                    metadataKey: SETUP_KEY,
+                    metadataValue: SETUP_VERSION,
+                    location: { spreadsheet: true },
+                    visibility: "DOCUMENT",
+                  },
+                },
+              },
           // Next action: same choices as the app; anything else may still be typed.
           {
             setDataValidation: {
@@ -145,53 +163,44 @@ function toValues(keys: (SheetColumn | null)[], row: Partial<ContactRow>): strin
   return keys.map((k) => (k ? (row[k] ?? "") : ""));
 }
 
-// Runs a Sheets call; if it fails, the remembered layout may be stale (columns moved), so forget it.
-async function withFreshLayoutOnError<T>(fn: () => Promise<T>): Promise<T> {
-  try {
-    return await fn();
-  } catch (err) {
-    cached = null;
-    throw err;
-  }
-}
+
 
 async function readAll(): Promise<{ info: SheetInfo; rows: { rowNumber: number; values: string[] }[] }> {
   const info = await ensureSheet();
-  const res = await withFreshLayoutOnError(() =>
-    sheetsClient().spreadsheets.values.get({
-      spreadsheetId: requireEnv("SHEET_ID"),
-      range: `${quotedTab()}!A2:${columnLetter(info.headers.length - 1)}`,
-    }),
-  );
+  const res = await sheetsClient().spreadsheets.values.get({
+    spreadsheetId: requireEnv("SHEET_ID"),
+    range: `${quotedTab()}!A2:${columnLetter(info.headers.length - 1)}`,
+  });
   const rows = (res.data.values ?? []).map((v, i) => ({ rowNumber: i + 2, values: v.map(String) }));
   return { info, rows };
 }
 
 export async function listContacts(): Promise<ContactRow[]> {
-  const { info, rows } = await readAll();
-  return rows.map((r) => toRow(info.keys, r.values)).filter((r) => r.id);
+  return (await listContactsWithLayout()).contacts;
 }
 
-export async function appendContact(row: ContactRow): Promise<void> {
-  // Re-read the layout right before writing a whole row, so a column moved meanwhile can't misplace values.
-  cached = null;
-  const info = await ensureSheet();
-  await withFreshLayoutOnError(() =>
-    sheetsClient().spreadsheets.values.append({
-      spreadsheetId: requireEnv("SHEET_ID"),
-      range: `${quotedTab()}!A1`,
-      // RAW so text from a card can never be run as a Sheets formula.
-      valueInputOption: "RAW",
-      insertDataOption: "INSERT_ROWS",
-      requestBody: { values: [toValues(info.keys, row)] },
-    }),
-  );
+// The contacts plus the tab layout they were read with, so a save in the same request can reuse it.
+export async function listContactsWithLayout(): Promise<{ contacts: ContactRow[]; layout: SheetInfo }> {
+  const { info, rows } = await readAll();
+  return { contacts: rows.map((r) => toRow(info.keys, r.values)).filter((r) => r.id), layout: info };
+}
+
+// `layout` may be passed when it was read moments ago in the same request (saves Sheets requests).
+export async function appendContact(row: ContactRow, layout?: SheetInfo): Promise<void> {
+  const info = layout ?? (await ensureSheet());
+  await sheetsClient().spreadsheets.values.append({
+    spreadsheetId: requireEnv("SHEET_ID"),
+    range: `${quotedTab()}!A1`,
+    // RAW so text from a card can never be run as a Sheets formula.
+    valueInputOption: "RAW",
+    insertDataOption: "INSERT_ROWS",
+    requestBody: { values: [toValues(info.keys, row)] },
+  });
 }
 
 // Finds a contact's row, then re-reads its id cell right before a write: if someone deleted a row
 // meanwhile, the rows have shifted and we look again instead of touching the wrong contact.
 async function locate(id: string) {
-  cached = null; // edits write into specific columns: use the current layout
   for (let attempt = 0; attempt < 3; attempt++) {
     const { info, rows } = await readAll();
     const idCol = info.keys.indexOf("id");

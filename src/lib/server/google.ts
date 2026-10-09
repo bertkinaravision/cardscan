@@ -2,6 +2,7 @@ import "server-only";
 import { Readable } from "node:stream";
 import { drive as driveApi } from "@googleapis/drive";
 import { auth, sheets as sheetsApi } from "@googleapis/sheets";
+import type { GaxiosError, RetryConfig } from "gaxios";
 import { driveUploadMode, requireEnv } from "./env";
 
 const SCOPES = [
@@ -58,19 +59,25 @@ export function explainGoogleError(err: unknown, what: "sheet" | "drive"): Error
 }
 
 // Google answers 429 when a batch of saves goes over the per-minute quota (about 60 requests),
-// and occasionally 5xx. Wait and retry: 2s, 4s, 8s, 16s. Writes (POST) are retried only on 429,
-// where Google guarantees nothing was written.
-const retryConfig = {
-  retry: 4,
-  retryDelay: 2000,
+// and occasionally 5xx. Wait and retry: 2s, 4s, 8s, 16s (30s in all, so the minute can roll over).
+// Writes (POST) are retried only on 429, where Google guarantees nothing was written; requests that
+// were cancelled are never retried.
+const MAX_RETRIES = 4;
+const attemptOf = (err: GaxiosError) => err.config?.retryConfig?.currentRetryAttempt ?? 0;
+const retryConfig: RetryConfig = {
+  retry: MAX_RETRIES,
   httpMethodsToRetry: ["GET", "PUT", "POST", "DELETE"],
-  shouldRetry: (err: { config?: { method?: string; retryConfig?: { currentRetryAttempt?: number } }; response?: { status?: number } }) => {
-    if ((err.config?.retryConfig?.currentRetryAttempt ?? 0) >= 4) return false;
+  shouldRetry: (err) => {
+    if (err.name === "AbortError" || err.code === "ABORT_ERR") return false;
+    const attempt = attemptOf(err);
+    if (attempt >= MAX_RETRIES) return false;
     const status = err.response?.status;
     if (status === 429) return true;
-    const isWrite = (err.config?.method ?? "GET").toUpperCase() === "POST";
-    return !isWrite && (status === undefined || status >= 500);
+    if ((err.config?.method ?? "GET").toUpperCase() === "POST") return false;
+    if (status === undefined) return attempt < 2; // no answer at all: try twice
+    return status >= 500;
   },
+  retryBackoff: (err) => new Promise<void>((r) => setTimeout(r, 2000 * 2 ** attemptOf(err))),
 };
 
 export function sheetsClient() {

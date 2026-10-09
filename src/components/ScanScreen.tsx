@@ -81,15 +81,21 @@ export function ScanScreen() {
 
   async function addCard() {
     if (!front) return;
-    await addToQueue(
-      { id: crypto.randomUUID(), createdAt: Date.now(), status: "queued", event: event.trim(), dateMet },
-      front,
-      back,
-    );
+    // Clear the slots straight away: a quick double tap can't add the card twice, and the next
+    // photo can be taken while this one is being stored.
+    const card = { id: crypto.randomUUID(), createdAt: Date.now(), status: "queued" as const, event: event.trim(), dateMet };
+    const photos = { front, back };
     setFront(null);
     setBack(null);
     if (frontInput.current) frontInput.current.value = "";
     if (backInput.current) backInput.current.value = "";
+    try {
+      await addToQueue(card, photos.front, photos.back);
+    } catch {
+      setError("Could not store this card on the phone. Please try again.");
+      setFront((f) => f ?? photos.front);
+      setBack((b) => b ?? photos.back);
+    }
   }
 
   const toReview = cards.filter((c) => c.status === "review");

@@ -8,7 +8,33 @@ export const dynamic = "force-dynamic";
 const EXAMPLES = ["(random)", "123-abc.apps.googleusercontent.com", "GOCSPX-...", "1AbC...", "1XyZ...", "AIza...", "sk-ant-...", "bert@gmail.com", "preeti@gmail.com", '{"type":"service_account",...}'];
 const isExample = (v: string | undefined) => !!v && EXAMPLES.some((e) => v.replace(/\s+/g, "").includes(e.replace(/\s+/g, "")));
 
-export function GET() {
+// Checks that each configured Gemini model exists for this key (a free metadata lookup).
+async function geminiModels(): Promise<Record<string, string> | string> {
+  const key = process.env.GEMINI_API_KEY?.trim();
+  if ((process.env.LLM_PROVIDER || "gemini").toLowerCase() !== "gemini") return "not used";
+  if (!key) return "no GEMINI_API_KEY";
+  const models = [
+    process.env.LLM_MODEL || "gemini-3.5-flash-lite",
+    ...(process.env.LLM_FALLBACK_MODELS ?? "gemini-3.1-flash-lite,gemini-3.5-flash").split(","),
+  ]
+    .map((m) => m.trim())
+    .filter(Boolean);
+  const out: Record<string, string> = {};
+  for (const m of [...new Set(models)]) {
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}`, {
+        headers: { "x-goog-api-key": key },
+        signal: AbortSignal.timeout(5000),
+      });
+      out[m] = res.ok ? "ok" : res.status === 404 ? "NOT FOUND (retired or misspelled)" : `error ${res.status}`;
+    } catch {
+      out[m] = "could not check";
+    }
+  }
+  return out;
+}
+
+export async function GET() {
   const set = (name: string) =>
     isExample(process.env[name]) ? "EXAMPLE VALUE: replace with your own" : process.env[name]?.trim() ? "set" : "MISSING";
   const clientId = cleanEnv(process.env.AUTH_GOOGLE_ID) ?? "";
@@ -43,6 +69,7 @@ export function GET() {
       DRIVE_UPLOAD_MODE: driveUploadMode(),
       LLM_PROVIDER: process.env.LLM_PROVIDER || "gemini (default)",
       GEMINI_API_KEY: set("GEMINI_API_KEY"),
+      gemini_models: await geminiModels(),
     },
     { headers: { "Cache-Control": "no-store" } },
   );
