@@ -6,6 +6,9 @@ import { getCard, listCardInfo, onQueueChange, updateCard } from "@/lib/client/q
 
 // The server allows 60s per card; give up a little earlier and try again.
 const EXTRACT_TIMEOUT_MS = 50_000;
+// After this many slow or "busy" answers in a row the card is marked failed (Retry starts over),
+// so a card the model can't handle doesn't keep using up the free quota. Losing signal doesn't count.
+const MAX_TRIES = 4;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let running = false;
@@ -51,14 +54,14 @@ async function drainQueue() {
     try {
       res = await fetchWithTimeout("/api/extract", { method: "POST", body: form }, EXTRACT_TIMEOUT_MS);
     } catch (err) {
-      const error = err instanceof RequestTimeout ? "Slow connection. Will retry." : "No connection. Will retry.";
-      await updateCard(next.id, { status: "queued", error });
+      if (err instanceof RequestTimeout) await retryLater(next.id, "Slow connection or busy AI model. Will retry.", "This card took too long to read several times. Tap Retry to try again.");
+      else await updateCard(next.id, { status: "queued", error: "No connection. Will retry." });
       await sleep(15_000);
       continue;
     }
     const body = await res.json().catch(() => ({}));
     if (res.status === 429) {
-      await updateCard(next.id, { status: "queued", error: body.error ?? "Rate limited. Will retry." });
+      await retryLater(next.id, body.error ?? "Rate limited. Will retry.", "The AI model stayed busy. Tap Retry to try again.");
       await sleep(20_000);
     } else if (res.status === 401) {
       // Signed out (session ended): keep the card queued so it continues after signing in again.
@@ -73,9 +76,17 @@ async function drainQueue() {
       // A reply that could not be read (cut off, or a page from a Wi-Fi login): don't show an empty form.
       await updateCard(next.id, { status: "failed", error: "Could not read the result. Tap Retry." });
     } else {
-      await updateCard(next.id, { status: "review", error: undefined, extraction: body.extraction });
+      await updateCard(next.id, { status: "review", error: undefined, extraction: body.extraction, tries: 0 });
     }
   }
+}
+
+// Back in the queue with a message, or failed once it has been tried MAX_TRIES times.
+function retryLater(id: string, message: string, gaveUp: string) {
+  return updateCard(id, (c) => {
+    const tries = (c.tries ?? 0) + 1;
+    return tries >= MAX_TRIES ? { status: "failed", error: gaveUp, tries: 0 } : { status: "queued", error: message, tries };
+  });
 }
 
 export function QueueRunner() {

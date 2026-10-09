@@ -244,11 +244,24 @@ test("UI-14", "Model slower than the phone's 50s limit", async () => {
   await fake.set({ faults: { geminiDefault: { delayMs: 52000, text: '{"first_name":"Slow"}' } } });
   const { ctx, page } = await open();
   await addCard(page);
-  await page.waitForTimeout(140000);
+  // 4 tries: 50s timeout + 15s pause each, so it gives up after about 4 minutes.
+  await page.getByText(/took too long to read several times/).waitFor({ timeout: 300000 }).catch(() => {});
   const calls = (await fake.state()).log.filter((l) => l.startsWith("gemini")).length;
   const status = (await page.locator("li").first().innerText()).replace(/\s+/g, " ");
   await fake.set({ faults: { geminiDefault: null } });
-  record("UI-14", "Model answers after 52s every time", "gives up after a few tries with a message", `after 140s: ${calls} model calls, card shows "${status}"`, /Failed/.test(status));
+  record("UI-14", "Model answers after 52s every time", "gives up after a few tries with a message", `${calls} model calls, card shows "${status}"`, /Failed/.test(status) && calls <= 4);
+  await ctx.close();
+});
+
+test("UI-15", "Model keeps answering 500", async () => {
+  await fake.set({ faults: { geminiDefault: { status: 500, message: "Internal error" } } });
+  const { ctx, page } = await open();
+  await addCard(page);
+  await page.getByText(/stayed busy/).waitFor({ timeout: 120000 }).catch(() => {});
+  const calls = (await fake.state()).log.filter((l) => l.startsWith("gemini")).length;
+  const status = (await page.locator("li").first().innerText()).replace(/\s+/g, " ");
+  await fake.set({ faults: { geminiDefault: null } });
+  record("UI-15", "Model answers 500 every time", "retried a few times, then failed with a message", `${calls} model calls, card shows "${status}"`, /Failed/.test(status) && calls <= 4);
   await ctx.close();
 });
 

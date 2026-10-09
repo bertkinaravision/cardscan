@@ -27,6 +27,8 @@ export type CardInfo = {
   // Event and date captured with the card.
   event: string;
   dateMet: string;
+  // Slow or "busy" answers so far (see QueueRunner).
+  tries?: number;
 };
 
 export type QueuedCard = CardInfo & { front: Blob; back: Blob | null };
