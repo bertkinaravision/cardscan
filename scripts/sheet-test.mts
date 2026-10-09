@@ -197,3 +197,14 @@ assert.ok((await listContacts()).some((c) => c.id === "t1"), "new contact readab
 ops.insertRows("Contacts", 0, 2);
 assert.ok((await listContacts()).some((c) => c.id === "t1"), "found again after more rows are added above (header marker moved)");
 console.log("Title row tests passed.");
+
+// 15. The tab is renamed (followed by its marker), then deleted (clear error, no silent new tab).
+ops.renameTab("Contacts", "CRM 2026");
+assert.ok((await listContacts()).some((c) => c.id === "t1"), "contacts found in the renamed tab");
+await appendContact(row("n1", { first_name: "Renamed", last_name: "Tab" }));
+assert.ok(ops.tab("CRM 2026").rows.some((r: string[]) => r.includes("n1")), "new contact saved to the renamed tab");
+assert.equal(ops.tab("Contacts"), undefined, "no new Contacts tab");
+ops.deleteTab("CRM 2026");
+await assert.rejects(listContacts(), /tab is missing/);
+assert.equal(ops.tab("Contacts"), undefined, "still no silent new tab");
+console.log("Renamed and deleted tab tests passed.");

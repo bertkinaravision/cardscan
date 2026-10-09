@@ -34,8 +34,9 @@ export type SheetInfo = { sheetId: number; title: string; headerRow: number; hea
 // Bump when the formatting applied to the tab changes, so existing Sheets get it once too.
 const SETUP_VERSION = "2";
 const SETUP_KEY = "cardscan_setup";
-// Hidden markers (Google Sheets "developer metadata") that move with the row when rows are
-// inserted or deleted above it, so the app keeps finding its header row after a title is added.
+// Hidden markers (Google Sheets "developer metadata") that stay with the tab when it is renamed and
+// with the header row when rows are inserted above it, so the app keeps finding both.
+const TAB_KEY = "cardscan_tab";
 const HEADER_KEY = "cardscan_header";
 
 type Meta = {
@@ -55,22 +56,33 @@ async function ensureSheet(): Promise<SheetInfo> {
     sheets.spreadsheets.get({ spreadsheetId, fields: "sheets.properties(sheetId,title)" }),
     sheets.spreadsheets.developerMetadata.search({
       spreadsheetId,
-      requestBody: { dataFilters: [SETUP_KEY, HEADER_KEY].map((metadataKey) => ({ developerMetadataLookup: { metadataKey } })) },
+      requestBody: { dataFilters: [SETUP_KEY, TAB_KEY, HEADER_KEY].map((metadataKey) => ({ developerMetadataLookup: { metadataKey } })) },
     }),
   ]).catch((err) => {
     throw explainGoogleError(err, "sheet");
   });
   const found: Meta[] = (search.data.matchedDeveloperMetadata ?? []).map((m) => m.developerMetadata ?? {});
   const setupMeta = found.find((m) => m.metadataKey === SETUP_KEY);
-  const title = tabName();
-  let sheetId = meta.data.sheets?.find((s) => s.properties?.title === title)?.properties?.sheetId;
-  if (sheetId == null) {
+
+  // The tab: the one the marker is on (so it may be renamed), else the one named SHEET_TAB / "Contacts".
+  // When SHEET_TAB is set, that name decides.
+  const tabs = (meta.data.sheets ?? []).map((s) => ({ sheetId: s.properties!.sheetId!, title: s.properties!.title! }));
+  const marked = found.filter((m) => m.metadataKey === TAB_KEY).map((m) => m.location?.sheetId);
+  const byMarker = process.env.SHEET_TAB ? [] : tabs.filter((t) => marked.includes(t.sheetId));
+  let tab = byMarker.find((t) => t.title === tabName()) ?? byMarker[0] ?? tabs.find((t) => t.title === tabName());
+  if (!tab) {
+    // Set up before, so the tab was deleted: say so rather than quietly starting an empty one.
+    if (setupMeta)
+      throw new Error(
+        `The "${tabName()}" tab is missing from the Sheet. If it was deleted by mistake, restore it (Edit → Undo, or File → Version history). To start fresh, add an empty tab named "${tabName()}".`,
+      );
     const res = await sheets.spreadsheets.batchUpdate({
       spreadsheetId,
-      requestBody: { requests: [{ addSheet: { properties: { title, gridProperties: { frozenRowCount: 1 } } } }] },
+      requestBody: { requests: [{ addSheet: { properties: { title: tabName(), gridProperties: { frozenRowCount: 1 } } } }] },
     });
-    sheetId = res.data.replies![0].addSheet!.properties!.sheetId!;
+    tab = { sheetId: res.data.replies![0].addSheet!.properties!.sheetId!, title: tabName() };
   }
+  const { sheetId, title } = tab;
 
   // The header row: where the marker says, else the first of the top rows with an "id" header
   // (a Sheet set up before the marker existed, possibly with a title added above), else row 1.
@@ -102,6 +114,13 @@ async function ensureSheet(): Promise<SheetInfo> {
   }
   // Formatting and markers go to Google in one request.
   const requests: object[] = [];
+  if (!marked.includes(sheetId)) {
+    requests.push({
+      createDeveloperMetadata: {
+        developerMetadata: { metadataKey: TAB_KEY, metadataValue: "1", location: { sheetId }, visibility: "DOCUMENT" },
+      },
+    });
+  }
   if (!headerMeta) {
     requests.push({
       createDeveloperMetadata: {
