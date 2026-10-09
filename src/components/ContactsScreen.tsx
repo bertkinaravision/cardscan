@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { EXTRACTED_FIELDS, FIELD_LABELS, STATUSES, type ContactInput, type ContactRow, type Status } from "@/lib/fields";
 import { deleteContact, displayName, fetchContacts, patchContact } from "@/lib/client/contacts";
 import { download, toCsv, toVCard } from "@/lib/client/export";
+import { NextActionPicker } from "@/components/NextActionPicker";
 
 const STATUS_STYLES: Record<string, string> = {
   "To contact": "bg-brand/10 text-brand border-brand/30",
@@ -374,11 +375,9 @@ function ContactDetails({
           <div className="flex flex-col gap-2 rounded-lg bg-stone-50 p-2">
             <label className="flex flex-col gap-1 text-stone-600">
               Next action
-              <input
+              <NextActionPicker
                 value={followUp.next_action}
-                onChange={(e) => setFollowUp((v) => ({ ...v, next_action: e.target.value }))}
-                placeholder="e.g. Send product deck"
-                className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-ink"
+                onChange={(next_action) => setFollowUp((v) => ({ ...v, next_action }))}
               />
             </label>
             <div className="grid grid-cols-2 gap-2">

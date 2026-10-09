@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BlobImage } from "@/components/BlobImage";
+import { NextActionPicker } from "@/components/NextActionPicker";
 import {
   EXTRACTED_FIELDS,
   FIELD_LABELS,
@@ -231,7 +232,10 @@ export function ReviewScreen({ id, defaultOwner }: { id: string; defaultOwner: s
           </select>
         </label>
         <Field name="owner" value={draft.owner} onChange={setField} />
-        <Field name="next_action" value={draft.next_action} onChange={setField} />
+        <label className="flex flex-col gap-1 text-sm text-stone-600">
+          {FIELD_LABELS.next_action}
+          <NextActionPicker value={draft.next_action} onChange={(v) => setField("next_action", v)} />
+        </label>
         <Field name="next_action_date" type="date" value={draft.next_action_date} onChange={setField} />
       </fieldset>
 

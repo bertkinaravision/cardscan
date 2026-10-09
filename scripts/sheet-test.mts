@@ -120,7 +120,7 @@ await appendContact(row("a1", { first_name: "Rachel", last_name: "Lim", notes: '
 const contacts = tabs.find((t) => t.title === "Contacts")!;
 assert.ok(contacts, "Contacts tab created");
 assert.deepEqual(contacts.rows[0], [...SHEET_COLUMNS], "header row written");
-assert.equal(validations, 1, "status dropdown added");
+assert.equal(validations, 2, "status and next action dropdowns added");
 assert.equal(contacts.rows[1][SHEET_COLUMNS.indexOf("notes")], '=HYPERLINK("x")', "text kept as-is (RAW)");
 
 // 2. A person adds a column and reorders; the app still maps by header name.
@@ -137,7 +137,7 @@ assert.equal(list[0].first_name, "Rachel");
 assert.equal(list[0].last_name, "Lim");
 assert.equal(list[1].first_name, "Kenji");
 assert.equal(contacts.rows[2][header.indexOf("first_name")], "Kenji", "written into the reordered column");
-assert.equal(validations, 1, "no second dropdown when header is complete");
+assert.equal(validations, 2, "no extra dropdowns when header is complete");
 
 // 3. Update keeps unrelated cells, including the person's own column and hand edits made meanwhile.
 contacts.rows[1][header.indexOf("notes")] = "typed in the Sheet";

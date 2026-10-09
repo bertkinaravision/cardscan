@@ -1,5 +1,5 @@
 import "server-only";
-import { SHEET_COLUMNS, STATUSES, type ContactRow, type SheetColumn } from "@/lib/fields";
+import { NEXT_ACTIONS, SHEET_COLUMNS, STATUSES, type ContactRow, type SheetColumn } from "@/lib/fields";
 import { requireEnv } from "./env";
 import { explainGoogleError, sheetsClient } from "./google";
 
@@ -79,6 +79,22 @@ async function ensureSheet(): Promise<SheetInfo> {
               range: { sheetId, startRowIndex: 1, startColumnIndex: statusCol, endColumnIndex: statusCol + 1 },
               rule: {
                 condition: { type: "ONE_OF_LIST", values: STATUSES.map((v) => ({ userEnteredValue: v })) },
+                strict: false,
+                showCustomUi: true,
+              },
+            },
+          },
+          // Next action: same choices as the app; anything else may still be typed.
+          {
+            setDataValidation: {
+              range: {
+                sheetId,
+                startRowIndex: 1,
+                startColumnIndex: headers.indexOf("next_action"),
+                endColumnIndex: headers.indexOf("next_action") + 1,
+              },
+              rule: {
+                condition: { type: "ONE_OF_LIST", values: NEXT_ACTIONS.map((v) => ({ userEnteredValue: v })) },
                 strict: false,
                 showCustomUi: true,
               },

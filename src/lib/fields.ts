@@ -46,6 +46,19 @@ export const STATUSES = [
 ] as const;
 export type Status = (typeof STATUSES)[number];
 
+// Choices in the "Next action" dropdown. Anything else can be typed via "Other…".
+export const NEXT_ACTIONS = [
+  "Send email",
+  "Send brochure / deck",
+  "Call",
+  "Schedule meeting",
+  "Arrange demo",
+  "Send proposal / quote",
+  "Connect on LinkedIn",
+  "Introduce to colleague",
+  "Follow up later",
+] as const;
+
 // Fields a person fills in or edits (on top of the extracted ones).
 export const CONTEXT_FIELDS = ["event", "date_met", "notes"] as const;
 export const CRM_FIELDS = ["status", "owner", "next_action", "next_action_date"] as const;
