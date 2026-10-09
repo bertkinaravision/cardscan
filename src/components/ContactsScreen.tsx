@@ -381,16 +381,16 @@ function ContactDetails({
               />
             </label>
             <div className="grid grid-cols-2 gap-2">
-              <label className="flex flex-col gap-1 text-stone-600">
+              <label className="flex min-w-0 flex-col gap-1 text-stone-600">
                 Next action date
                 <input
                   type="date"
                   value={followUp.next_action_date}
                   onChange={(e) => setFollowUp((v) => ({ ...v, next_action_date: e.target.value }))}
-                  className="w-full min-w-0 rounded-lg border border-stone-300 bg-white px-2 py-2 text-ink"
+                  className="w-full min-w-0 rounded-lg border border-stone-300 bg-white px-3 py-2 text-ink"
                 />
               </label>
-              <label className="flex flex-col gap-1 text-stone-600">
+              <label className="flex min-w-0 flex-col gap-1 text-stone-600">
                 Owner
                 <input
                   value={followUp.owner}

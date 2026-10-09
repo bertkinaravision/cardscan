@@ -30,3 +30,21 @@ select,
 textarea {
   font-size: 16px; /* stops iOS zooming into fields */
 }
+
+/* iPhone Safari gives date fields a minimum width (they spill into the next column), a taller
+   box and centred text. Make them behave like the other fields. */
+input[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 2.625rem; /* same height as the text fields (py-2, 16px text) */
+}
+input[type="date"]::-webkit-date-and-time-value {
+  text-align: left;
+  margin: 0;
+}
+input[type="date"]::-webkit-calendar-picker-indicator {
+  margin-left: auto;
+}

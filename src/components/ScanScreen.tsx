@@ -111,7 +111,7 @@ export function ScanScreen() {
             className="w-full min-w-0 rounded-lg border border-stone-300 bg-white px-3 py-2 text-stone-900"
           />
         </label>
-        <label className="flex flex-col gap-1 text-sm text-stone-600">
+        <label className="flex min-w-0 flex-col gap-1 text-sm text-stone-600">
           Date met
           <input
             type="date"
@@ -121,7 +121,7 @@ export function ScanScreen() {
               writePref("cardscan:dateMet", e.target.value);
               writePref("cardscan:dateSetOn", today());
             }}
-            className="w-full min-w-0 rounded-lg border border-stone-300 bg-white px-2 py-2 text-stone-900"
+            className="w-full min-w-0 rounded-lg border border-stone-300 bg-white px-3 py-2 text-stone-900"
           />
         </label>
       </section>
