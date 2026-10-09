@@ -1,5 +1,5 @@
 import "server-only";
-import { NEXT_ACTIONS, SHEET_COLUMNS, STATUSES, type ContactRow, type SheetColumn } from "@/lib/fields";
+import { FIELD_LABELS, NEXT_ACTIONS, SHEET_COLUMNS, STATUSES, type ContactRow, type SheetColumn } from "@/lib/fields";
 import { requireEnv } from "./env";
 import { explainGoogleError, sheetsClient } from "./google";
 
@@ -17,11 +17,34 @@ function columnLetter(index: number): string {
   return s;
 }
 
-type SheetInfo = { sheetId: number; headers: string[] };
+// Header text -> our column. Matches the technical name ("first_name") or a readable one
+// ("First name", "Event / place met"), so headers can be renamed to look nicer in the Sheet.
+const squash = (h: string) => h.toLowerCase().replace(/[^a-z0-9]+/g, "");
+const HEADER_NAMES = new Map<string, SheetColumn>();
+for (const c of SHEET_COLUMNS) {
+  HEADER_NAMES.set(squash(c), c);
+  if (FIELD_LABELS[c]) HEADER_NAMES.set(squash(FIELD_LABELS[c]), c);
+}
+export const headerKey = (h: string): SheetColumn | null => HEADER_NAMES.get(squash(h)) ?? null;
+
+// headers: the header row as written; keys: which of our columns each one is (null = a column of your own).
+type SheetInfo = { sheetId: number; headers: string[]; keys: (SheetColumn | null)[] };
+
+// The tab layout rarely changes, so it is remembered for a few seconds: saving a batch of cards
+// then needs far fewer Sheets requests (Google allows about 60 per minute).
+let cached: { info: SheetInfo; at: number } | null = null;
+const CACHE_MS = 15_000;
 
 // Makes sure the tab and header row exist. Adds any of our columns that are missing
 // (to the right of what is there), so a hand-made Sheet keeps working.
 async function ensureSheet(): Promise<SheetInfo> {
+  if (cached && Date.now() - cached.at < CACHE_MS) return cached.info;
+  const info = await loadSheetInfo();
+  cached = { info, at: Date.now() };
+  return info;
+}
+
+async function loadSheetInfo(): Promise<SheetInfo> {
   const sheets = sheetsClient();
   const spreadsheetId = requireEnv("SHEET_ID");
 
@@ -39,8 +62,10 @@ async function ensureSheet(): Promise<SheetInfo> {
 
   const headerRes = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${quotedTab()}!1:1` });
   const existing = (headerRes.data.values?.[0] ?? []).map((h) => String(h).trim());
-  const missing = SHEET_COLUMNS.filter((c) => !existing.includes(c));
+  const existingKeys = existing.map(headerKey);
+  const missing = SHEET_COLUMNS.filter((c) => !existingKeys.includes(c));
   const headers = [...existing, ...missing];
+  const keys: (SheetColumn | null)[] = [...existingKeys, ...missing];
 
   if (missing.length > 0) {
     await sheets.spreadsheets.values.update({
@@ -51,9 +76,10 @@ async function ensureSheet(): Promise<SheetInfo> {
     });
     // Dropdown for the status column; dates shown (and read back) as yyyy-mm-dd even when typed
     // by hand in Sheets, so the app's date fields and sorting keep working; bold header.
-    const statusCol = headers.indexOf("status");
-    const dateFormats = ["date_met", "next_action_date"].map((c) => {
-      const col = headers.indexOf(c);
+    const statusCol = keys.indexOf("status");
+    const nextActionCol = keys.indexOf("next_action");
+    const dateFormats = (["date_met", "next_action_date"] as const).map((c) => {
+      const col = keys.indexOf(c);
       return {
         repeatCell: {
           range: { sheetId, startRowIndex: 1, startColumnIndex: col, endColumnIndex: col + 1 },
@@ -90,8 +116,8 @@ async function ensureSheet(): Promise<SheetInfo> {
               range: {
                 sheetId,
                 startRowIndex: 1,
-                startColumnIndex: headers.indexOf("next_action"),
-                endColumnIndex: headers.indexOf("next_action") + 1,
+                startColumnIndex: nextActionCol,
+                endColumnIndex: nextActionCol + 1,
               },
               rule: {
                 condition: { type: "ONE_OF_LIST", values: NEXT_ACTIONS.map((v) => ({ userEnteredValue: v })) },
@@ -104,54 +130,71 @@ async function ensureSheet(): Promise<SheetInfo> {
       },
     });
   }
-  return { sheetId, headers };
+  return { sheetId, headers, keys };
 }
 
-function toRow(headers: string[], values: string[]): ContactRow {
+function toRow(keys: (SheetColumn | null)[], values: string[]): ContactRow {
   const row = Object.fromEntries(SHEET_COLUMNS.map((c) => [c, ""])) as ContactRow;
-  headers.forEach((h, i) => {
-    if ((SHEET_COLUMNS as readonly string[]).includes(h)) row[h as SheetColumn] = values[i] ?? "";
+  keys.forEach((k, i) => {
+    if (k && !row[k]) row[k] = values[i] ?? "";
   });
   return row;
 }
 
-function toValues(headers: string[], row: Partial<ContactRow>): string[] {
-  return headers.map((h) => row[h as SheetColumn] ?? "");
+function toValues(keys: (SheetColumn | null)[], row: Partial<ContactRow>): string[] {
+  return keys.map((k) => (k ? (row[k] ?? "") : ""));
+}
+
+// Runs a Sheets call; if it fails, the remembered layout may be stale (columns moved), so forget it.
+async function withFreshLayoutOnError<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    cached = null;
+    throw err;
+  }
 }
 
 async function readAll(): Promise<{ info: SheetInfo; rows: { rowNumber: number; values: string[] }[] }> {
   const info = await ensureSheet();
-  const res = await sheetsClient().spreadsheets.values.get({
-    spreadsheetId: requireEnv("SHEET_ID"),
-    range: `${quotedTab()}!A2:${columnLetter(info.headers.length - 1)}`,
-  });
+  const res = await withFreshLayoutOnError(() =>
+    sheetsClient().spreadsheets.values.get({
+      spreadsheetId: requireEnv("SHEET_ID"),
+      range: `${quotedTab()}!A2:${columnLetter(info.headers.length - 1)}`,
+    }),
+  );
   const rows = (res.data.values ?? []).map((v, i) => ({ rowNumber: i + 2, values: v.map(String) }));
   return { info, rows };
 }
 
 export async function listContacts(): Promise<ContactRow[]> {
   const { info, rows } = await readAll();
-  return rows.map((r) => toRow(info.headers, r.values)).filter((r) => r.id);
+  return rows.map((r) => toRow(info.keys, r.values)).filter((r) => r.id);
 }
 
 export async function appendContact(row: ContactRow): Promise<void> {
+  // Re-read the layout right before writing a whole row, so a column moved meanwhile can't misplace values.
+  cached = null;
   const info = await ensureSheet();
-  await sheetsClient().spreadsheets.values.append({
-    spreadsheetId: requireEnv("SHEET_ID"),
-    range: `${quotedTab()}!A1`,
-    // RAW so text from a card can never be run as a Sheets formula.
-    valueInputOption: "RAW",
-    insertDataOption: "INSERT_ROWS",
-    requestBody: { values: [toValues(info.headers, row)] },
-  });
+  await withFreshLayoutOnError(() =>
+    sheetsClient().spreadsheets.values.append({
+      spreadsheetId: requireEnv("SHEET_ID"),
+      range: `${quotedTab()}!A1`,
+      // RAW so text from a card can never be run as a Sheets formula.
+      valueInputOption: "RAW",
+      insertDataOption: "INSERT_ROWS",
+      requestBody: { values: [toValues(info.keys, row)] },
+    }),
+  );
 }
 
 // Finds a contact's row, then re-reads its id cell right before a write: if someone deleted a row
 // meanwhile, the rows have shifted and we look again instead of touching the wrong contact.
 async function locate(id: string) {
+  cached = null; // edits write into specific columns: use the current layout
   for (let attempt = 0; attempt < 3; attempt++) {
     const { info, rows } = await readAll();
-    const idCol = info.headers.indexOf("id");
+    const idCol = info.keys.indexOf("id");
     const found = rows.find((r) => r.values[idCol] === id);
     if (!found) return null;
     const check = await sheetsClient().spreadsheets.values.get({
@@ -171,9 +214,9 @@ export async function updateContact(id: string, patch: Partial<ContactRow>): Pro
   const changes: Partial<ContactRow> = { ...patch, last_updated: new Date().toISOString() };
   delete changes.id;
   const data = Object.entries(changes)
-    .filter(([col]) => info.headers.includes(col))
+    .filter(([col]) => info.keys.includes(col as SheetColumn))
     .map(([col, value]) => ({
-      range: `${quotedTab()}!${columnLetter(info.headers.indexOf(col))}${found.rowNumber}`,
+      range: `${quotedTab()}!${columnLetter(info.keys.indexOf(col as SheetColumn))}${found.rowNumber}`,
       values: [[value ?? ""]],
     }));
   await sheetsClient().spreadsheets.values.batchUpdate({
@@ -181,7 +224,7 @@ export async function updateContact(id: string, patch: Partial<ContactRow>): Pro
     // RAW so text can never be run as a Sheets formula.
     requestBody: { valueInputOption: "RAW", data },
   });
-  return { ...toRow(info.headers, found.values), ...changes, id } as ContactRow;
+  return { ...toRow(info.keys, found.values), ...changes, id } as ContactRow;
 }
 
 export async function deleteContactRow(id: string): Promise<ContactRow | null> {
@@ -200,5 +243,5 @@ export async function deleteContactRow(id: string): Promise<ContactRow | null> {
       ],
     },
   });
-  return toRow(info.headers, found.values);
+  return toRow(info.keys, found.values);
 }

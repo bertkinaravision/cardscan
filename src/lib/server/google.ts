@@ -57,8 +57,24 @@ export function explainGoogleError(err: unknown, what: "sheet" | "drive"): Error
   return err instanceof Error ? err : new Error(String(err));
 }
 
+// Google answers 429 when a batch of saves goes over the per-minute quota (about 60 requests),
+// and occasionally 5xx. Wait and retry: 2s, 4s, 8s, 16s. Writes (POST) are retried only on 429,
+// where Google guarantees nothing was written.
+const retryConfig = {
+  retry: 4,
+  retryDelay: 2000,
+  httpMethodsToRetry: ["GET", "PUT", "POST", "DELETE"],
+  shouldRetry: (err: { config?: { method?: string; retryConfig?: { currentRetryAttempt?: number } }; response?: { status?: number } }) => {
+    if ((err.config?.retryConfig?.currentRetryAttempt ?? 0) >= 4) return false;
+    const status = err.response?.status;
+    if (status === 429) return true;
+    const isWrite = (err.config?.method ?? "GET").toUpperCase() === "POST";
+    return !isWrite && (status === undefined || status >= 500);
+  },
+};
+
 export function sheetsClient() {
-  return sheetsApi({ version: "v4", auth: serviceAccountAuth() });
+  return sheetsApi({ version: "v4", auth: serviceAccountAuth(), retryConfig });
 }
 
 // Drive client for card images. In "user" mode it acts as the signed-in person.

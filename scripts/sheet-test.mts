@@ -21,6 +21,7 @@ type Tab = { title: string; sheetId: number; rows: string[][] };
 const tabs: Tab[] = [{ title: "Sheet1", sheetId: 0, rows: [] }];
 const driveFiles = new Map<string, string>();
 let validations = 0;
+let busy = 0; // how many upcoming reads/appends answer 429 (Google's "too many requests")
 
 function parseRange(range: string) {
   const m = decodeURIComponent(range).match(/^'?(.*?)'?!([A-Z]*)(\d*)(?::([A-Z]*)(\d*))?$/)!;
@@ -66,7 +67,11 @@ nock("https://sheets.googleapis.com")
     }),
   }))
   .get(/\/v4\/spreadsheets\/sheet1\/values\/[^:]+$/)
-  .reply(200, (uri) => {
+  .reply((uri) => {
+    if (busy > 0) {
+      busy--;
+      return [429, { error: { code: 429, message: "Quota exceeded" } }];
+    }
     const { tab, startRow } = parseRange(uri.split("/values/")[1].split("?")[0]);
     const rows = tab!.rows.slice(startRow - 1).map((r) => {
       const copy = [...r];
@@ -74,7 +79,7 @@ nock("https://sheets.googleapis.com")
       return copy;
     });
     while (rows.length && rows[rows.length - 1].length === 0) rows.pop();
-    return { values: rows.length ? rows : undefined };
+    return [200, { values: rows.length ? rows : undefined }];
   })
   .put(/\/v4\/spreadsheets\/sheet1\/values\/.+/)
   .reply(200, (uri, body: { values: string[][] }) => {
@@ -98,11 +103,16 @@ nock("https://sheets.googleapis.com")
     return {};
   })
   .post(/\/v4\/spreadsheets\/sheet1\/values\/.+:append/)
-  .reply(200, (uri, body: { values: string[][] }) => {
+  .reply((uri, rawBody) => {
+    const body = rawBody as { values: string[][] };
+    if (busy > 0) {
+      busy--;
+      return [429, { error: { code: 429, message: "Quota exceeded" } }];
+    }
     assert.match(uri, /valueInputOption=RAW/);
     const { tab } = parseRange(uri.split("/values/")[1].split(":append")[0]);
     tab!.rows.push(body.values[0]);
-    return {};
+    return [200, {}];
   });
 
 // ---- tests ----
@@ -229,3 +239,29 @@ assert.deepEqual([t("Dato' Ahmad").salutation, t("Dato' Ahmad").first_name], ["D
 assert.deepEqual([t("Drew").salutation, t("Drew").first_name], ["", "Drew"], "names starting like a title are untouched");
 assert.deepEqual([t("Mr. Tan", "Dr.").salutation, t("Mr. Tan", "Dr.").first_name], ["Dr. Mr.", "Tan"]);
 console.log("Salutation tests passed.");
+
+// 10. Google says "too many requests": the save waits and succeeds.
+const t0 = Date.now();
+busy = 2;
+await appendContact(row("q1", { first_name: "Busy", last_name: "Day" }));
+assert.ok((await listContacts()).some((c) => c.id === "q1"), "saved after 429 retries");
+console.log(`Retry-on-429 test passed (${((Date.now() - t0) / 1000).toFixed(1)}s).`);
+
+// 11. Readable, renamed and reordered headers still map to the right columns.
+const { headerKey } = await import("../src/lib/server/sheet");
+assert.equal(headerKey("First name"), "first_name");
+assert.equal(headerKey("Event / place met"), "event");
+assert.equal(headerKey(" LinkedIn "), "linkedin");
+assert.equal(headerKey("Next action date"), "next_action_date");
+assert.equal(headerKey("My notes column"), null);
+const h: string[] = contacts.rows[0];
+const rename: Record<string, string> = { first_name: "First name", last_name: "Last name", event: "Event / place met", status: "Status" };
+h.forEach((v, i) => (h[i] = rename[v] ?? v));
+await new Promise((r) => setTimeout(r, 15_100)); // layout cache expires
+await appendContact(row("r1", { first_name: "Pretty", last_name: "Headers", event: "Expo", status: "Contacted" }));
+const pretty = (await listContacts()).find((c) => c.id === "r1")!;
+assert.deepEqual([pretty.first_name, pretty.last_name, pretty.event, pretty.status], ["Pretty", "Headers", "Expo", "Contacted"]);
+assert.equal(contacts.rows[0].filter((x) => x === "first_name").length, 0, "no duplicate first_name column added");
+await updateContact("r1", { status: "Closed" });
+assert.equal(contacts.rows.find((r) => r[0] === "r1")![h.indexOf("Status")], "Closed");
+console.log("Readable header tests passed.");

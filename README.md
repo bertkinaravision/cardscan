@@ -158,7 +158,9 @@ One row per approved contact, in this column order:
 - `status` has a dropdown: To contact, Contacted, In conversation, Closed, Not relevant.
 - `next_action` has a dropdown too (Send email, Send brochure / deck, Call, Schedule meeting, Arrange demo, Send proposal / quote, Connect on LinkedIn, Introduce to colleague, Follow up later); anything else can still be typed. Change the list in `NEXT_ACTIONS` in `src/lib/fields.ts`.
 - `id` and `image_file_ids` are used by the app to find, edit and delete rows. Don't change them.
-- You can add your own columns to the right, sort, or filter. The app matches columns by header name.
+- Make it look nice: colours, column widths, bold, freezing, hiding columns (`id`, `image_file_ids` and `source_card_ids` are only for the app), sorting and filtering are all fine.
+- You can rename headers to readable ones, for example `first_name` → `First name`, `event` → `Event / place met`, `next_action_date` → `Next action date`. The app recognises the technical name or the label the app itself shows. Other names (e.g. "Given name") are treated as your own extra column, and the app adds a new `first_name` column at the right.
+- You can move columns and add your own; the app matches columns by header, not position.
 - Text is written as plain text, so nothing on a card can turn into a Sheets formula.
 
 ## Switching to Google Workspace
