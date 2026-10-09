@@ -1,9 +1,7 @@
 // Tests the Google Sheets/Drive code against an in-memory fake of Google's APIs (no Google account needed).
-// Run: npx tsx --conditions=react-server --tsconfig tsconfig.json scripts/sheet-test.mts
-// Needs `nock` installed (npm i -D nock).
+// Run: npm test
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
-import nock from "nock";
 
 const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 process.env.GOOGLE_SERVICE_ACCOUNT_JSON = JSON.stringify({
@@ -16,117 +14,9 @@ process.env.DRIVE_UPLOAD_MODE = "user";
 delete process.env.HTTPS_PROXY;
 delete process.env.https_proxy;
 
-// ---- fake Google APIs ----
-type Tab = { title: string; sheetId: number; rows: string[][] };
-const tabs: Tab[] = [{ title: "Sheet1", sheetId: 0, rows: [] }];
-const driveFiles = new Map<string, string>();
-let validations = 0;
-const devMeta: { metadataId: number; metadataKey: string; metadataValue: string }[] = [];
-let busy = 0; // how many upcoming reads/appends answer 429 (Google's "too many requests")
-
-function parseRange(range: string) {
-  const m = decodeURIComponent(range).match(/^'?(.*?)'?!([A-Z]*)(\d*)(?::([A-Z]*)(\d*))?$/)!;
-  const tab = tabs.find((t) => t.title === m[1].replace(/''/g, "'"));
-  return { tab, startRow: m[3] ? Number(m[3]) : 1 };
-}
-
-nock.disableNetConnect();
-nock("https://oauth2.googleapis.com").persist().post("/token").reply(200, { access_token: "sa-token", expires_in: 3600 });
-nock("https://www.googleapis.com")
-  .persist()
-  .post(/\/upload\/drive\/v3\/files/)
-  .reply(200, () => {
-    const id = `file${driveFiles.size + 1}`;
-    driveFiles.set(id, "jpeg");
-    return { id, webViewLink: `https://drive.google.com/file/d/${id}/view` };
-  })
-  .delete(/\/drive\/v3\/files\/.*/)
-  .reply((uri) => {
-    const id = uri.split("/").pop()!.split("?")[0];
-    return driveFiles.delete(id) ? [204, ""] : [404, { error: { code: 404 } }];
-  });
-nock("https://sheets.googleapis.com")
-  .persist()
-  .get(/\/v4\/spreadsheets\/sheet1\?/)
-  .reply(200, () => ({
-    sheets: tabs.map((t) => ({ properties: { title: t.title, sheetId: t.sheetId } })),
-    developerMetadata: devMeta,
-  }))
-  .post("/v4/spreadsheets/sheet1:batchUpdate")
-  .reply(200, (_uri, body: { requests: Record<string, unknown>[] }) => ({
-    replies: body.requests.map((r) => {
-      if (r.addSheet) {
-        const title = (r.addSheet as { properties: { title: string } }).properties.title;
-        const tab = { title, sheetId: tabs.length + 100, rows: [] };
-        tabs.push(tab);
-        return { addSheet: { properties: { title, sheetId: tab.sheetId } } };
-      }
-      if (r.setDataValidation) validations++;
-      if (r.createDeveloperMetadata) {
-        const m = (r.createDeveloperMetadata as { developerMetadata: { metadataKey: string; metadataValue: string } }).developerMetadata;
-        devMeta.push({ metadataId: devMeta.length + 1, metadataKey: m.metadataKey, metadataValue: m.metadataValue });
-      }
-      if (r.updateDeveloperMetadata) {
-        const u = r.updateDeveloperMetadata as { dataFilters: { developerMetadataLookup: { metadataId: number } }[]; developerMetadata: { metadataValue: string } };
-        const m = devMeta.find((d) => d.metadataId === u.dataFilters[0].developerMetadataLookup.metadataId)!;
-        m.metadataValue = u.developerMetadata.metadataValue;
-      }
-      if (r.deleteDimension) {
-        const { range } = r.deleteDimension as { range: { sheetId: number; startIndex: number; endIndex: number } };
-        const tab = tabs.find((t) => t.sheetId === range.sheetId)!;
-        tab.rows.splice(range.startIndex, range.endIndex - range.startIndex);
-      }
-      return {};
-    }),
-  }))
-  .get(/\/v4\/spreadsheets\/sheet1\/values\/[^:]+$/)
-  .reply((uri) => {
-    if (busy > 0) {
-      busy--;
-      return [429, { error: { code: 429, message: "Quota exceeded" } }];
-    }
-    const { tab, startRow } = parseRange(uri.split("/values/")[1].split("?")[0]);
-    const rows = tab!.rows.slice(startRow - 1).map((r) => {
-      const copy = [...r];
-      while (copy.length && copy[copy.length - 1] === "") copy.pop(); // Google trims trailing empty cells
-      return copy;
-    });
-    while (rows.length && rows[rows.length - 1].length === 0) rows.pop();
-    return [200, { values: rows.length ? rows : undefined }];
-  })
-  .put(/\/v4\/spreadsheets\/sheet1\/values\/.+/)
-  .reply(200, (uri, body: { values: string[][] }) => {
-    assert.match(uri, /valueInputOption=RAW/);
-    const { tab, startRow } = parseRange(uri.split("/values/")[1].split("?")[0]);
-    while (tab!.rows.length < startRow) tab!.rows.push([]);
-    tab!.rows[startRow - 1] = body.values[0];
-    return {};
-  })
-  .post("/v4/spreadsheets/sheet1/values:batchUpdate")
-  .reply(200, (_uri, body: { valueInputOption: string; data: { range: string; values: string[][] }[] }) => {
-    assert.equal(body.valueInputOption, "RAW");
-    for (const d of body.data) {
-      const m = decodeURIComponent(d.range).match(/^'?(.*?)'?!([A-Z]+)(\d+)$/)!;
-      const tab = tabs.find((t) => t.title === m[1])!;
-      const col = [...m[2]].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
-      const row = tab.rows[Number(m[3]) - 1];
-      while (row.length <= col) row.push("");
-      row[col] = d.values[0][0];
-    }
-    return {};
-  })
-  .post(/\/v4\/spreadsheets\/sheet1\/values\/.+:append/)
-  .reply((uri, rawBody) => {
-    const body = rawBody as { values: string[][] };
-    if (busy > 0) {
-      busy--;
-      return [429, { error: { code: 429, message: "Quota exceeded" } }];
-    }
-    assert.match(uri, /valueInputOption=RAW/);
-    const { tab } = parseRange(uri.split("/values/")[1].split(":append")[0]);
-    tab!.rows.push(body.values[0]);
-    return [200, {}];
-  });
+// ---- fake Google APIs (shared with the adversarial tests) ----
+const { fake, install, ops } = await import("../tests/fake-google.mjs");
+install();
 
 // ---- tests ----
 const { appendContact, listContacts, updateContact, deleteContactRow } = await import("../src/lib/server/sheet");
@@ -140,19 +30,17 @@ const row = (id: string, extra: Partial<Row> = {}): Row =>
 
 // 1. Missing tab and header are created.
 await appendContact(row("a1", { first_name: "Rachel", last_name: "Lim", notes: '=HYPERLINK("x")' }));
-const contacts = tabs.find((t) => t.title === "Contacts")!;
+const contacts = fake.state.tabs.find((t: { title: string }) => t.title === "Contacts") as { rows: string[][] };
 assert.ok(contacts, "Contacts tab created");
 assert.deepEqual(contacts.rows[0], [...SHEET_COLUMNS], "header row written");
-assert.equal(validations, 2, "status and next action dropdowns added");
+assert.equal(fake.state.validations, 2, "status and next action dropdowns added");
 assert.equal(contacts.rows[1][SHEET_COLUMNS.indexOf("notes")], '=HYPERLINK("x")', "text kept as-is (RAW)");
 
 // 2. A person adds a column and reorders; the app still maps by header name.
 const header: string[] = contacts.rows[0];
-const swap = (r: string[]) => {
-  [r[1], r[2]] = [r[2], r[1]];
-  r.push(r === header ? "My column" : "keep me");
-};
-contacts.rows.forEach(swap);
+ops.moveColumn("Contacts", 1, 2);
+const width = header.length;
+contacts.rows.forEach((r, i) => ops.setCell("Contacts", i, width, i === 0 ? "My column" : "keep me"));
 await appendContact(row("a2", { first_name: "Kenji", last_name: "Sato", status: "Contacted" }));
 const list = await listContacts();
 assert.equal(list.length, 2);
@@ -160,7 +48,7 @@ assert.equal(list[0].first_name, "Rachel");
 assert.equal(list[0].last_name, "Lim");
 assert.equal(list[1].first_name, "Kenji");
 assert.equal(contacts.rows[2][header.indexOf("first_name")], "Kenji", "written into the reordered column");
-assert.equal(validations, 2, "no extra dropdowns when header is complete");
+assert.equal(fake.state.validations, 2, "no extra dropdowns when header is complete");
 
 // 3. Update keeps unrelated cells, including the person's own column and hand edits made meanwhile.
 contacts.rows[1][header.indexOf("notes")] = "typed in the Sheet";
@@ -255,7 +143,7 @@ console.log("Salutation tests passed.");
 
 // 10. Google says "too many requests": the save waits and succeeds.
 const t0 = Date.now();
-busy = 2;
+Object.assign(fake.faults, { appendStatus: 429, appendCount: 2 });
 await appendContact(row("q1", { first_name: "Busy", last_name: "Day" }));
 assert.ok((await listContacts()).some((c) => c.id === "q1"), "saved after 429 retries");
 console.log(`Retry-on-429 test passed (${((Date.now() - t0) / 1000).toFixed(1)}s).`);
@@ -279,13 +167,13 @@ assert.equal(contacts.rows.find((r) => r[0] === "r1")![h.indexOf("Status")], "Cl
 console.log("Readable header tests passed.");
 
 // 12. A Sheet made by an older version (all columns there, no setup marker) gets the dropdowns once.
-devMeta.length = 0;
-const before = validations;
+ops.clearSpreadsheetMeta();
+const before = fake.state.validations;
 await listContacts();
-assert.equal(validations, before + 2, "dropdowns applied to an older Sheet");
+assert.equal(fake.state.validations, before + 2, "dropdowns applied to an older Sheet");
 await listContacts();
-assert.equal(validations, before + 2, "and only once");
-assert.equal(devMeta[0]?.metadataValue, "2");
+assert.equal(fake.state.validations, before + 2, "and only once");
+assert.ok(ops.setupMarker(), "setup marker written");
 
 // 13. Two headers for the same column: the first one is used for reading and writing.
 const hdr: string[] = contacts.rows[0];

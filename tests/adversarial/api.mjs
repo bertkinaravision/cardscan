@@ -345,11 +345,8 @@ test("NET-11", "Delete with expired, unrefreshable token", async () => {
   record("NET-11", "Delete when Drive access expired", "nothing deleted, 'sign in again'", `${r.status} ${short(r.body)}; row still there: ${still}`, r.status === 401 && still);
 });
 
-// ---------- Sheet state (things people do to the Sheet) ----------
-async function headerRow(c) {
-  await seed(c, ["warm-up"]);
-  return (await rows())[0];
-}
+// ---------- Sheet state (things people do to the Sheet; done through the fake so metadata moves as in Google) ----------
+const names = async (c) => (await contacts(c)).body?.contacts?.map((x) => x.first_name).sort().join(",");
 test("ST-1", "Empty spreadsheet (no Contacts tab)", async () => {
   const r = await save(await cookie());
   const st = await fake.state();
@@ -358,96 +355,104 @@ test("ST-1", "Empty spreadsheet (no Contacts tab)", async () => {
 test("ST-2", "Tab renamed by a person", async () => {
   const c = await cookie();
   await seed(c, ["A", "B"]);
+  await fake.op("renameTab", "Contacts", "CRM 2026");
+  const shown = await names(c);
+  const s = await save(c, { contact: emptyContact({ first_name: "C" }) });
   const st = await fake.state();
-  st.tabs.find((t) => t.title === "Contacts").title = "CRM 2026";
-  await fake.set({ tabs: st.tabs });
+  const crm = st.tabs.find((t) => t.title === "CRM 2026").rows.slice(1).filter((r) => r.some(Boolean)).length;
+  record("ST-2", "Someone renames the 'Contacts' tab", "contacts still shown, new saves go to the renamed tab",
+    `shown before save: ${shown}; save ${s.status}; tabs: ${st.tabs.map((t) => t.title).join(", ")}; rows in 'CRM 2026': ${crm}`,
+    shown === "A,B" && s.status === 200 && crm === 3 && !st.tabs.some((t) => t.title === "Contacts"));
+});
+test("ST-2b", "Tab deleted after the app set it up", async () => {
+  const c = await cookie();
+  await seed(c, ["A"]);
+  await fake.op("deleteTab", "Contacts");
   const r = await contacts(c);
-  const after = (await fake.state()).tabs.map((t) => t.title);
-  record("ST-2", "Someone renames the 'Contacts' tab", "contacts still shown, or a clear error",
-    `${r.status}, ${r.body?.contacts?.length} contacts shown; tabs now: ${after.join(", ")}`, r.body?.contacts?.length === 2 || r.status >= 400);
+  const st = await fake.state();
+  record("ST-2b", "Someone deletes the 'Contacts' tab", "clear error, no silent new tab",
+    `${r.status} ${short(r.body)}; tabs: ${st.tabs.map((t) => t.title).join(", ")}`, r.status >= 400 && /tab/i.test(r.body?.error ?? "") && !st.tabs.some((t) => t.title === "Contacts"));
 });
 test("ST-3", "Title row inserted above the headers", async () => {
   const c = await cookie();
   await seed(c, ["Alice", "Bob"]);
-  const st = await fake.state();
-  const tab = st.tabs.find((t) => t.title === "Contacts");
-  tab.rows.unshift(["Kinara contacts 2026"]);
-  await fake.set({ tabs: st.tabs });
-  const r = await contacts(c);
-  const names = r.body?.contacts?.map((x) => x.first_name || `(id=${x.id})`);
-  record("ST-3", "Someone adds a title row above the header row", "Alice and Bob still shown, or a clear error",
-    `${r.status}, shown: ${short(names)}; row 1 now: ${short((await rows())[0].slice(0, 4))}`, (names?.join() === "Alice,Bob") || r.status >= 400);
+  await fake.op("insertRows", "Contacts", 0, 2, [["Kinara contacts 2026"], []]);
+  const shown = await names(c);
+  const s = await save(c, { contact: emptyContact({ first_name: "Cara" }) });
+  const after = await names(c);
+  const r = (await fake.state()).tabs.find((t) => t.title === "Contacts").rows;
+  record("ST-3", "Someone adds a title row (and a blank row) above the header row", "contacts still shown, title kept, new row under the headers",
+    `shown: ${shown}; after a save: ${after}; row 1: ${short(r[0])}; row 3 starts: ${short(r[2].slice(0, 2))}`,
+    shown === "Alice,Bob" && s.status === 200 && after === "Alice,Bob,Cara" && r[0].join() === "Kinara contacts 2026" && r[2][0] === "id");
 });
 test("ST-4", "Header renamed to an unknown name", async () => {
   const c = await cookie();
-  const h = await headerRow(c);
-  const st = await fake.state();
-  const tab = st.tabs.find((t) => t.title === "Contacts");
-  tab.rows[0][h.indexOf("company")] = "Organisation";
-  await fake.set({ tabs: st.tabs });
-  const r = await contacts(c);
+  await save(c, { contact: emptyContact({ first_name: "A", company: "Acme" }) });
+  const h = (await rows())[0];
+  await fake.op("setCell", "Contacts", 0, h.indexOf("company"), "Organisation");
+  await fake.op("setCell", "Contacts", 0, h.indexOf("first_name"), "Given name");
+  const got = (await contacts(c)).body?.contacts?.[0];
+  await save(c, { contact: emptyContact({ first_name: "B", company: "Beta" }) });
   const after = (await rows())[0];
-  record("ST-4", "Header 'company' renamed to 'Organisation'", "company still shown, or a clear error",
-    `company shown: "${r.body?.contacts?.[0]?.company}"; new header columns: ${short(after.slice(h.length))}`, r.body?.contacts?.[0]?.company !== "" || r.status >= 400);
+  const companies = (await contacts(c)).body.contacts.map((x) => x.company).sort().join(",");
+  record("ST-4", "Headers renamed to 'Organisation' / 'Given name'", "data still shown, no extra columns",
+    `shown: ${got?.first_name} / ${got?.company}; companies after a save: ${companies}; header columns ${h.length} -> ${after.length}`,
+    got?.company === "Acme" && got?.first_name === "A" && companies === "Acme,Beta" && after.length === h.length);
 });
-test("ST-5", "Columns reordered", async () => {
+test("ST-5", "Columns moved", async () => {
   const c = await cookie();
   await seed(c, ["Alice"]);
-  const st = await fake.state();
-  const tab = st.tabs.find((t) => t.title === "Contacts");
-  tab.rows = tab.rows.map((r) => { const x = [...r]; while (x.length < tab.rows[0].length) x.push(""); return x.reverse(); });
-  await fake.set({ tabs: st.tabs });
-  const r = await contacts(c);
-  record("ST-5", "Columns reordered by hand", "same data", `${r.body?.contacts?.[0]?.first_name}`, r.body?.contacts?.[0]?.first_name === "Alice");
+  const h = (await rows())[0];
+  await fake.op("moveColumn", "Contacts", h.indexOf("first_name"), 0);
+  await fake.op("moveColumn", "Contacts", h.indexOf("status"), 25);
+  const id = (await contacts(c)).body.contacts[0].id;
+  await patch(c, id, { status: "Closed" });
+  const got = (await contacts(c)).body.contacts[0];
+  record("ST-5", "Columns moved by hand", "same data, edits land in the right column", `${got.first_name} / ${got.status}`, got.first_name === "Alice" && got.status === "Closed");
 });
 test("ST-6", "Row copied (duplicate id)", async () => {
   const c = await cookie();
   const [id] = await seed(c, ["Alice"]);
-  const st = await fake.state();
-  const tab = st.tabs.find((t) => t.title === "Contacts");
-  tab.rows.push([...tab.rows[1]]);
-  await fake.set({ tabs: st.tabs });
-  const r = await contacts(c);
+  const r = await rows();
+  await fake.op("insertRows", "Contacts", 2, 1, [[...(await fake.state()).tabs.find((t) => t.title === "Contacts").rows[1]]]);
+  const shown = await contacts(c);
   const d = await del(c, id);
   const left = (await contacts(c)).body.contacts.filter((x) => x.id === id).length;
   record("ST-6", "A row copied in the Sheet (same id twice)", "app copes (shows both, delete removes one)",
-    `${r.body.contacts.length} shown; delete ${d.status}; rows left with id: ${left}`, r.status === 200 && d.status === 200);
+    `${shown.body.contacts.length} shown (${r.length} rows before); delete ${d.status}; rows left with id: ${left}`, shown.status === 200 && d.status === 200);
 });
 test("ST-7", "Blank rows between contacts", async () => {
   const c = await cookie();
   const [, b] = await seed(c, ["A", "B"]);
-  const st = await fake.state();
-  const tab = st.tabs.find((t) => t.title === "Contacts");
-  tab.rows.splice(2, 0, [], []);
-  await fake.set({ tabs: st.tabs });
+  await fake.op("insertRows", "Contacts", 2, 2);
   const p = await patch(c, b, { notes: "after blank rows" });
+  const s = await save(c, { contact: emptyContact({ first_name: "C" }) });
+  const r = (await fake.state()).tabs.find((t) => t.title === "Contacts").rows;
   const got = (await contacts(c)).body.contacts.find((x) => x.id === b);
-  record("ST-7", "Blank rows inserted between contacts", "edit lands on the right row", `${p.status}; B.notes="${got.notes}"`, got.notes === "after blank rows");
+  record("ST-7", "Blank rows inserted between contacts", "edit lands on the right row, new contact added at the bottom",
+    `${p.status}; B.notes="${got.notes}"; save ${s.status}; last row is C: ${r[r.length - 1][r[0].indexOf("first_name")] === "C"}`,
+    got.notes === "after blank rows" && r[r.length - 1][r[0].indexOf("first_name")] === "C");
 });
 test("ST-8", "Contact deleted in the Sheet, then edited in the app", async () => {
   const c = await cookie();
   const [a] = await seed(c, ["A"]);
-  const st = await fake.state();
-  st.tabs.find((t) => t.title === "Contacts").rows.splice(1, 1);
-  await fake.set({ tabs: st.tabs });
+  await fake.op("deleteRows", "Contacts", 1, 1);
   const p = await patch(c, a, { status: "Closed" });
   record("ST-8", "Edit a contact someone just deleted in the Sheet", "404 'not found'", `${p.status} ${short(p.body)}`, p.status === 404);
 });
 test("ST-9", "1000 contacts", async () => {
   const c = await cookie();
-  const h = await headerRow(c);
-  const st = await fake.state();
-  const tab = st.tabs.find((t) => t.title === "Contacts");
-  for (let i = 0; i < 1000; i++) tab.rows.push(h.map((k) => (k === "id" ? `bulk-${i}` : k === "first_name" ? `Person ${i}` : k === "status" ? "To contact" : "")));
-  await fake.set({ tabs: st.tabs });
+  await seed(c, ["warm-up"]);
+  const h = (await rows())[0];
+  const bulk = [...Array(1000).keys()].map((i) => h.map((k) => (k === "id" ? `bulk-${i}` : k === "first_name" ? `Person ${i}` : k === "status" ? "To contact" : "")));
+  await fake.op("insertRows", "Contacts", 2, 1000, bulk);
   let t = Date.now();
   const r = await contacts(c);
   const listMs = Date.now() - t;
   t = Date.now();
   await patch(c, "bulk-999", { status: "Closed" });
   const patchMs = Date.now() - t;
-  const st2 = await fake.state();
-  record("ST-9", "1000 contacts in the Sheet", "list and edit stay fast", `${r.body.contacts.length} listed in ${listMs}ms, edit ${patchMs}ms; Sheets calls total: ${st2.log.filter((l) => l.startsWith("sheets")).length}`, r.body.contacts.length === 1001);
+  record("ST-9", "1000 contacts in the Sheet", "list and edit stay fast", `${r.body.contacts.length} listed in ${listMs}ms, edit ${patchMs}ms`, r.body.contacts.length === 1001);
 });
 
 // ---------- Configuration ----------

@@ -22,6 +22,7 @@ export async function cookie(email = "tester@example.com", extra = {}) {
 export const fake = {
   reset: () => fetch(`${CONTROL}/reset`, { method: "POST" }),
   set: (v) => fetch(`${CONTROL}/set`, { method: "POST", body: JSON.stringify(v) }),
+  op: (name, ...args) => fetch(`${CONTROL}/op`, { method: "POST", body: JSON.stringify({ name, args }) }).then((r) => r.json()),
   state: () => fetch(`${CONTROL}/state`).then((r) => r.json()),
 };
 
