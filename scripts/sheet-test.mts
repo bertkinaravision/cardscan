@@ -106,7 +106,8 @@ nock("https://sheets.googleapis.com")
   });
 
 // ---- tests ----
-const { appendContact, listContacts, getContact, updateContact, deleteContactRow } = await import("../src/lib/server/sheet");
+const { appendContact, listContacts, updateContact, deleteContactRow } = await import("../src/lib/server/sheet");
+const getContact = async (id: string) => (await listContacts()).find((c) => c.id === id) ?? null;
 const { uploadImage, deleteImages } = await import("../src/lib/server/google");
 const { SHEET_COLUMNS } = await import("../src/lib/fields");
 type Row = Parameters<typeof appendContact>[0];
@@ -214,4 +215,7 @@ assert.equal(n.phone, "6512345678");
 assert.equal(n.other, "a; b");
 assert.equal(n.company, "", "missing field filled");
 assert.deepEqual(n.low_confidence, ["email"]);
+const nested = extractionSchema.parse(normalize({ address: { street: "1 Road", city: "Singapore" }, phone: [{ type: "work", number: "+65 1" }] }));
+assert.equal(nested.address, "1 Road, Singapore");
+assert.equal(nested.phone, "work, +65 1");
 console.log("Model answer normalisation tests passed.");

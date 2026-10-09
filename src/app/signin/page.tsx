@@ -32,7 +32,7 @@ export default async function SignInPage({ searchParams }: PageProps<"/signin">)
         <p className="rounded-lg bg-red-50 p-3 text-sm text-red-800">
           {signedInButNotAllowed
             ? ERROR_HINTS.AccessDenied
-            : (ERROR_HINTS[String(error)] ?? "Sign-in failed. Please try again.")}
+            : ((Object.hasOwn(ERROR_HINTS, String(error)) && ERROR_HINTS[String(error)]) || "Sign-in failed. Please try again.")}
           {error && error !== "AccessDenied" && (
             <span className="mt-1 block text-xs text-red-700/80">Error code: {String(error)}</span>
           )}

@@ -55,6 +55,7 @@ async function userAccessToken(req: Request): Promise<string | null> {
   if (!res.ok) return null;
   const data = (await res.json()) as { access_token?: string; expires_in?: number };
   if (!data.access_token) return null;
+  for (const [key, entry] of refreshed) if (entry.expiresAt < Date.now()) refreshed.delete(key);
   refreshed.set(token.googleRefreshToken, {
     token: data.access_token,
     expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000,

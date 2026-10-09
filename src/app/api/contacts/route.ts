@@ -49,16 +49,22 @@ export async function POST(req: Request) {
       if (front) uploaded.front = await uploadImage(user.googleAccessToken, `${safeName} - front - ${id}.jpg`, front);
       if (back) uploaded.back = await uploadImage(user.googleAccessToken, `${safeName} - back - ${id}.jpg`, back);
       if (existing) {
-        await updateContact(existing.id, {
+        const updated = await updateContact(existing.id, {
           ...mergeContact(existing, c, uploaded, now),
           source_card_ids: [existing.source_card_ids, id].filter(Boolean).join(","),
         });
+        if (!updated) throw new HttpError(404, "The contact to update was deleted meanwhile. Save this card as a new contact.");
         return Response.json({ id: existing.id, merged: true });
       }
       await appendContact(newRow(id, c, user.email, now, uploaded));
       return Response.json({ id });
     } catch (err) {
-      // Don't leave photos in Drive that no row points to (they could never be deleted from the app).
+      // The write may have gone through even though its reply was lost: then keep the photos and report success.
+      const saved = (await listContacts().catch(() => [])).find(
+        (r) => r.id === id || r.source_card_ids.split(",").includes(id),
+      );
+      if (saved) return Response.json({ id: saved.id });
+      // Otherwise don't leave photos in Drive that no row points to (they could never be deleted from the app).
       const uploadedIds = [uploaded.front?.id, uploaded.back?.id].filter((x): x is string => !!x);
       await deleteImages(user.googleAccessToken, uploadedIds).catch(() => {});
       throw err;

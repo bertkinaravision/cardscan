@@ -6,9 +6,12 @@ import { getCard, listCardInfo, onQueueChange, updateCard } from "@/lib/client/q
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let running = false;
 let wakeAgain = false;
+// Set when the server says we're signed out or not allowed; signing in reloads the app and clears it.
+let stopped = false;
 
 // Sends queued cards to /api/extract one at a time, while the app is open.
 async function processQueue() {
+  if (stopped) return;
   if (running) {
     // A card may have been added after the loop last looked; make it look once more.
     wakeAgain = true;
@@ -19,7 +22,7 @@ async function processQueue() {
     do {
       wakeAgain = false;
       await drainQueue();
-    } while (wakeAgain);
+    } while (wakeAgain && !stopped);
   } finally {
     running = false;
   }
@@ -30,7 +33,7 @@ async function drainQueue() {
     const info = (await listCardInfo()).find((c) => c.status === "queued");
     if (!info) return;
     const next = await getCard(info.id);
-    if (!next) {
+    if (!next || next.front.size === 0) {
       await updateCard(info.id, { status: "failed", error: "The photo is missing. Remove this card and scan it again." });
       continue;
     }
@@ -54,11 +57,13 @@ async function drainQueue() {
       await sleep(20_000);
     } else if (res.status === 401) {
       // Signed out (session ended): keep the card queued so it continues after signing in again.
+      stopped = true;
       await updateCard(next.id, { status: "queued", error: "Signed out. Sign in again to continue." });
       return;
     } else if (!res.ok) {
+      if (res.status === 403) stopped = true;
       await updateCard(next.id, { status: "failed", error: body.error ?? `Error ${res.status}` });
-      if (res.status === 403) return;
+      if (stopped) return;
     } else {
       await updateCard(next.id, { status: "review", error: undefined, extraction: body.extraction });
     }

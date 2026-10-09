@@ -35,6 +35,8 @@ const browser = typeof indexedDB !== "undefined";
 // Card details and photos are kept apart: photos are written once, and status or draft
 // updates are small single-transaction writes, so two screens can't overwrite each other.
 const cards = browser ? createStore("cardscan-v2", "cards") : undefined;
+// The first version kept everything in one store. Nothing was saved there in real use; clear it out.
+if (browser) indexedDB.deleteDatabase("cardscan");
 const photos = browser ? createStore("cardscan-v2-photos", "photos") : undefined;
 const CHANGED = "cardscan:queue-changed";
 
@@ -52,9 +54,9 @@ async function loadPhoto(key: string): Promise<Blob | null> {
   return blob;
 }
 
-async function withPhotos(info: CardInfo): Promise<QueuedCard | undefined> {
-  const front = await loadPhoto(`${info.id}:front`);
-  if (!front) return undefined;
+// A card whose photo went missing still comes back (with an empty photo), so it can be seen and removed.
+async function withPhotos(info: CardInfo): Promise<QueuedCard> {
+  const front = (await loadPhoto(`${info.id}:front`)) ?? new Blob([], { type: "image/jpeg" });
   const back = info.hasBack ? await loadPhoto(`${info.id}:back`) : null;
   return { ...info, front, back };
 }
@@ -66,8 +68,7 @@ export async function listCardInfo(): Promise<CardInfo[]> {
 }
 
 export async function listCards(): Promise<QueuedCard[]> {
-  const all = await Promise.all((await listCardInfo()).map(withPhotos));
-  return all.filter((c): c is QueuedCard => !!c);
+  return Promise.all((await listCardInfo()).map(withPhotos));
 }
 
 export async function getCard(id: string): Promise<QueuedCard | undefined> {

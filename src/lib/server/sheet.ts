@@ -118,13 +118,6 @@ export async function listContacts(): Promise<ContactRow[]> {
   return rows.map((r) => toRow(info.headers, r.values)).filter((r) => r.id);
 }
 
-export async function getContact(id: string): Promise<ContactRow | null> {
-  const { info, rows } = await readAll();
-  const idCol = info.headers.indexOf("id");
-  const found = rows.find((r) => r.values[idCol] === id);
-  return found ? toRow(info.headers, found.values) : null;
-}
-
 export async function appendContact(row: ContactRow): Promise<void> {
   const info = await ensureSheet();
   await sheetsClient().spreadsheets.values.append({

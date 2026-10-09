@@ -40,6 +40,14 @@ export async function extractCard(images: CardImage[]): Promise<Extraction> {
   return parsed.data;
 }
 
+// Turns any value into text: nested objects and lists become "a; b; c" instead of "[object Object]".
+function flatten(v: unknown): string {
+  if (v == null) return "";
+  if (Array.isArray(v)) return v.map(flatten).filter(Boolean).join("; ");
+  if (typeof v === "object") return Object.values(v).map(flatten).filter(Boolean).join(", ");
+  return String(v).trim();
+}
+
 // Small slips in the model's answer (a missing field, null instead of "", a number, an unknown
 // field name in low_confidence) shouldn't fail the whole card; the person reviews it anyway.
 export function normalize(json: unknown): unknown {
@@ -48,7 +56,7 @@ export function normalize(json: unknown): unknown {
   const out: Record<string, unknown> = {};
   for (const f of EXTRACTED_FIELDS) {
     const v = src[f];
-    out[f] = v == null ? "" : Array.isArray(v) ? v.join("; ") : String(v).trim();
+    out[f] = flatten(v);
   }
   const lc = Array.isArray(src.low_confidence) ? src.low_confidence : [];
   out.low_confidence = [...new Set(lc.filter((f): f is ExtractedField => (EXTRACTED_FIELDS as readonly unknown[]).includes(f)))];
