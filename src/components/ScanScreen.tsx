@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { BlobImage } from "@/components/BlobImage";
 import { compressImage } from "@/lib/client/image";
+import { SuggestionLists, useSuggestions } from "@/lib/client/suggestions";
 import {
   addCard as addToQueue,
   listCards,
@@ -48,6 +49,8 @@ export function ScanScreen() {
   const [back, setBack] = useState<Blob | null>(null);
   const [busy, setBusy] = useState<"front" | "back" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [importing, setImporting] = useState<{ done: number; total: number } | null>(null);
+  const suggestions = useSuggestions();
   const frontInput = useRef<HTMLInputElement>(null);
   const backInput = useRef<HTMLInputElement>(null);
 
@@ -98,6 +101,46 @@ export function ScanScreen() {
     }
   }
 
+  // Several photos at once (for example, cards shot earlier with the phone's own camera):
+  // each photo becomes one card, front only.
+  async function importMany(files: FileList | null) {
+    const list = files ? [...files] : [];
+    if (list.length === 0) return;
+    setError(null);
+    setImporting({ done: 0, total: list.length });
+    let failed = 0;
+    for (const [i, file] of list.entries()) {
+      try {
+        const blob = await compressImage(file);
+        await addToQueue(
+          { id: crypto.randomUUID(), createdAt: Date.now() + i, status: "queued", event: event.trim(), dateMet },
+          blob,
+          null,
+        );
+      } catch {
+        failed++;
+      }
+      setImporting({ done: i + 1, total: list.length });
+    }
+    setImporting(null);
+    if (failed > 0) setError(`${failed} photo${failed > 1 ? "s" : ""} could not be read and ${failed > 1 ? "were" : "was"} skipped.`);
+  }
+
+  // Cards not yet saved whose event or date differ from what is entered now (e.g. the event was
+  // typed after scanning): offer to apply the current event and date to them.
+  const unsaved = cards.filter((c) => c.status !== "saved" && c.status !== "saving");
+  const mismatched = unsaved.filter((c) => c.event !== event.trim() || c.dateMet !== dateMet);
+  async function applyToQueue() {
+    const ev = event.trim();
+    for (const c of mismatched) {
+      await updateCard(c.id, (cur) => ({
+        event: ev,
+        dateMet,
+        draft: cur.draft ? { ...cur.draft, event: ev, date_met: dateMet } : cur.draft,
+      }));
+    }
+  }
+
   const toReview = cards.filter((c) => c.status === "review");
   const saved = cards.filter((c) => c.status === "saved");
   const inProgress = cards.filter((c) => c.status === "queued" || c.status === "processing").length;
@@ -114,6 +157,7 @@ export function ScanScreen() {
               writePref("cardscan:event", e.target.value);
             }}
             placeholder="e.g. MedTech Asia"
+            list="cardscan-events"
             className="w-full min-w-0 rounded-lg border border-stone-300 bg-white px-3 py-2 text-stone-900"
           />
         </label>
@@ -130,6 +174,15 @@ export function ScanScreen() {
             className="w-full min-w-0 rounded-lg border border-stone-300 bg-white px-3 py-2 text-stone-900"
           />
         </label>
+        {mismatched.length > 0 && (event.trim() || dateMet) && (
+          <button
+            onClick={applyToQueue}
+            className="col-span-2 rounded-lg border border-brand-dark px-3 py-2 text-sm font-medium text-brand"
+          >
+            Use this event &amp; date for {mismatched.length} card{mismatched.length > 1 ? "s" : ""} in the queue
+          </button>
+        )}
+        <SuggestionLists {...suggestions} />
       </section>
 
       <section className="flex flex-col gap-3">
@@ -179,11 +232,28 @@ export function ScanScreen() {
             </label>
           ))}
         </div>
+        <label className="cursor-pointer rounded-xl border border-stone-300 bg-white px-4 py-3 text-center font-medium text-stone-700 active:bg-stone-100">
+          {importing ? `Importing ${importing.done} of ${importing.total}…` : "Import many photos (one card each)"}
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            disabled={importing !== null}
+            className="sr-only"
+            onChange={(e) => {
+              importMany(e.target.files);
+              e.target.value = "";
+            }}
+          />
+        </label>
         {error && <p className="text-sm text-red-700">{error}</p>}
+        {!front && !importing && (
+          <p className="-mb-1 text-center text-sm text-stone-500">Take a photo of the front to add a card.</p>
+        )}
         <button
           onClick={addCard}
-          disabled={!front || busy !== null}
-          className="rounded-xl bg-brand px-4 py-3 text-lg font-medium text-white disabled:bg-stone-300 active:bg-brand-dark"
+          disabled={!front || busy !== null || importing !== null}
+          className="rounded-xl bg-brand-dark px-4 py-3 text-lg font-medium text-on-accent disabled:bg-stone-300 active:bg-brand-darker"
         >
           Add card to queue
         </button>
@@ -192,7 +262,7 @@ export function ScanScreen() {
       {toReview.length > 0 && (
         <Link
           href={`/review/${toReview[0].id}`}
-          className="rounded-xl bg-amber-500 px-4 py-3 text-center text-lg font-medium text-white active:bg-amber-600"
+          className="rounded-xl bg-amber-700 px-4 py-3 text-center text-lg font-medium text-on-accent active:bg-amber-800"
         >
           Review {toReview.length} card{toReview.length > 1 ? "s" : ""}
         </Link>
@@ -240,21 +310,21 @@ function QueueItem({ card }: { card: QueuedCard }) {
       <BlobImage blob={card.front} alt="card" className="h-12 w-[4.5rem] shrink-0 rounded-md object-cover" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{name || card.event || "Card"}</p>
-        <span className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-xs ${STATUS_STYLES[card.status]}`}>
+        <span className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-sm ${STATUS_STYLES[card.status]}`}>
           {STATUS_LABELS[card.status]}
         </span>
-        {card.error && <p className="truncate text-xs text-red-700">{card.error}</p>}
+        {card.error && <p className="truncate text-sm text-red-700">{card.error}</p>}
       </div>
       <div className="flex shrink-0 gap-1">
         {card.status === "review" && (
-          <Link href={`/review/${card.id}`} className="rounded-lg bg-amber-500 px-3 py-2 text-sm text-white">
+          <Link href={`/review/${card.id}`} className="rounded-lg bg-amber-700 px-3 py-2 text-sm text-on-accent">
             Review
           </Link>
         )}
         {card.status === "failed" && (
           <button
             onClick={() => updateCard(card.id, { status: "queued", error: undefined })}
-            className="rounded-lg bg-stone-800 px-3 py-2 text-sm text-white"
+            className="rounded-lg bg-brand-dark px-3 py-2 text-sm text-on-accent"
           >
             Retry
           </button>

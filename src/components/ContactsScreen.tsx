@@ -5,6 +5,7 @@ import { EXTRACTED_FIELDS, FIELD_LABELS, STATUSES, type ContactInput, type Conta
 import { deleteContact, displayName, fetchContacts, patchContact } from "@/lib/client/contacts";
 import { download, toCsv, toVCard } from "@/lib/client/export";
 import { NextActionPicker } from "@/components/NextActionPicker";
+import { SuggestionLists } from "@/lib/client/suggestions";
 
 const STATUS_STYLES: Record<string, string> = {
   "To contact": "bg-brand/10 text-brand border-brand/30",
@@ -87,7 +88,7 @@ export function ContactsScreen() {
     return (
       <div className="flex flex-col gap-3">
         <p className="rounded-lg bg-red-50 p-3 text-red-800">Could not load contacts: {loadError}</p>
-        <button onClick={() => load(true)} className="rounded-xl bg-brand px-4 py-3 text-white">
+        <button onClick={() => load(true)} className="rounded-xl bg-brand-dark px-4 py-3 text-on-accent">
           Try again
         </button>
       </div>
@@ -154,6 +155,7 @@ export function ContactsScreen() {
 
       {contacts.length === 0 && <p className="text-stone-500">No contacts yet. Scan a card to get started.</p>}
 
+      <SuggestionLists events={distinct(contacts, "event")} owners={distinct(contacts, "owner")} />
       <ul className="flex flex-col gap-2">
         {shown.map((c) => (
           <ContactItem
@@ -259,11 +261,11 @@ function ContactItem({
             {displayName(c) || c.company || "(no name)"}
           </p>
           <p className="truncate text-sm text-stone-600">{[c.job_title, c.company].filter(Boolean).join(" · ")}</p>
-          <p className="truncate text-xs text-stone-500">
+          <p className="truncate text-sm text-stone-500">
             {[c.event, c.date_met, c.owner && `Owner: ${c.owner}`].filter(Boolean).join(" · ")}
           </p>
           {c.next_action && (
-            <p className={`mt-1 truncate text-xs ${overdue ? "font-semibold text-red-700" : "text-stone-700"}`}>
+            <p className={`mt-1 truncate text-sm ${overdue ? "font-semibold text-red-700" : "text-stone-700"}`}>
               Next: {c.next_action}
               {c.next_action_date && ` (${c.next_action_date})`}
             </p>
@@ -349,6 +351,7 @@ function ContactDetails({
               {FIELD_LABELS[f]}
               <input
                 type={f === "date_met" ? "date" : "text"}
+                list={f === "event" ? "cardscan-events" : undefined}
                 value={form[f] ?? ""}
                 onChange={(e) => setForm((v) => ({ ...v, [f]: e.target.value }))}
                 className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-ink"
@@ -364,7 +367,7 @@ function ContactDetails({
               onClick={async () => {
                 if (await onSave(form as Partial<ContactInput>)) setEditing(false);
               }}
-              className="flex-1 rounded-lg bg-brand px-3 py-2 font-medium text-white disabled:bg-mist"
+              className="flex-1 rounded-lg bg-brand-dark px-3 py-2 font-medium text-on-accent disabled:bg-mist"
             >
               Save contact details
             </button>
@@ -394,6 +397,7 @@ function ContactDetails({
                 Owner
                 <input
                   value={followUp.owner}
+                list="cardscan-owners"
                   onChange={(e) => setFollowUp((v) => ({ ...v, owner: e.target.value }))}
                   className="w-full min-w-0 rounded-lg border border-stone-300 bg-white px-3 py-2 text-ink"
                 />
@@ -412,7 +416,7 @@ function ContactDetails({
               <button
                 disabled={busy}
                 onClick={() => onSave(followUp)}
-                className="rounded-lg bg-brand px-3 py-2 font-medium text-white disabled:bg-mist"
+                className="rounded-lg bg-brand-dark px-3 py-2 font-medium text-on-accent disabled:bg-mist"
               >
                 Save follow-up
               </button>

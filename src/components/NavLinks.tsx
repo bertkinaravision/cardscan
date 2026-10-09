@@ -16,7 +16,7 @@ export function NavLinks() {
         <Link
           key={l.href}
           href={l.href}
-          className={`rounded-lg px-3 py-1.5 text-sm font-medium ${l.match(pathname) ? "bg-brand text-white" : "text-stone-600"}`}
+          className={`rounded-lg px-3 py-1.5 text-sm font-medium ${l.match(pathname) ? "bg-brand-dark text-on-accent" : "text-stone-600"}`}
         >
           {l.label}
         </Link>

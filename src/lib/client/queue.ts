@@ -1,5 +1,5 @@
 // The scan queue lives on the phone (IndexedDB), so it survives refreshes and bad signal.
-import { createStore, del, get, promisifyRequest, set, values } from "idb-keyval";
+import { clear, createStore, del, get, promisifyRequest, set, values } from "idb-keyval";
 import type { ContactInput, Extraction } from "@/lib/fields";
 
 export type CardStatus = "queued" | "processing" | "review" | "saving" | "saved" | "failed";
@@ -113,6 +113,14 @@ export async function removeCard(id: string): Promise<void> {
   await del(`${id}:back`, photos);
   photoCache.delete(`${id}:front`);
   photoCache.delete(`${id}:back`);
+  changed();
+}
+
+// Removes every card and photo stored on this phone (used when signing out).
+export async function clearQueue(): Promise<void> {
+  await clear(cards);
+  await clear(photos);
+  photoCache.clear();
   changed();
 }
 

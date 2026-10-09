@@ -1,4 +1,5 @@
 import type { ContactInput, ContactRow } from "@/lib/fields";
+import { fetchWithTimeout } from "./fetch";
 
 // Contacts from the Sheet, cached briefly so moving between screens stays fast.
 let cache: { at: number; promise: Promise<ContactRow[]> } | null = null;
@@ -11,7 +12,7 @@ async function readError(res: Response): Promise<string> {
 
 export function fetchContacts(force = false): Promise<ContactRow[]> {
   if (!force && cache && Date.now() - cache.at < MAX_AGE) return cache.promise;
-  const promise = fetch("/api/contacts").then(async (res) => {
+  const promise = fetchWithTimeout("/api/contacts", {}, 30_000).then(async (res) => {
     if (!res.ok) throw new Error(await readError(res));
     return ((await res.json()) as { contacts: ContactRow[] }).contacts;
   });
@@ -25,18 +26,18 @@ export function invalidateContacts() {
 }
 
 export async function patchContact(id: string, patch: Partial<ContactInput>): Promise<ContactRow> {
-  const res = await fetch(`/api/contacts/${encodeURIComponent(id)}`, {
+  const res = await fetchWithTimeout(`/api/contacts/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(patch),
-  });
+  }, 30_000);
   if (!res.ok) throw new Error(await readError(res));
   invalidateContacts();
   return ((await res.json()) as { contact: ContactRow }).contact;
 }
 
 export async function deleteContact(id: string): Promise<{ imagesNotDeleted: string[] }> {
-  const res = await fetch(`/api/contacts/${encodeURIComponent(id)}`, { method: "DELETE" });
+  const res = await fetchWithTimeout(`/api/contacts/${encodeURIComponent(id)}`, { method: "DELETE" }, 30_000);
   if (!res.ok) throw new Error(await readError(res));
   invalidateContacts();
   return res.json();

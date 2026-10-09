@@ -15,6 +15,8 @@ import {
   type ExtractedField,
 } from "@/lib/fields";
 import { displayName, fetchContacts, findDuplicates, invalidateContacts } from "@/lib/client/contacts";
+import { fetchWithTimeout, RequestTimeout } from "@/lib/client/fetch";
+import { SuggestionLists, useSuggestions } from "@/lib/client/suggestions";
 import { getCard, listCardInfo, removeCard, updateCard, type QueuedCard } from "@/lib/client/queue";
 
 const MULTILINE = new Set(["address", "other", "notes"]);
@@ -58,12 +60,20 @@ export function ReviewScreen({ id, defaultOwner }: { id: string; defaultOwner: s
     return () => ro.disconnect();
   }, []);
   const [saved, setSaved] = useState<ContactRow[]>([]);
+  const [dupCheck, setDupCheck] = useState<"checking" | "done" | "failed">("checking");
+  const suggestions = useSuggestions();
   // "" = save as a new contact; otherwise the id of the contact to update.
   const [mergeInto, setMergeInto] = useState("");
 
   useEffect(() => {
-    // Saved contacts, to warn about duplicates. If this fails, review still works.
-    fetchContacts().then(setSaved, () => {});
+    // Saved contacts, to warn about duplicates. If this fails, review still works, but say so.
+    fetchContacts().then(
+      (rows) => {
+        setSaved(rows);
+        setDupCheck("done");
+      },
+      () => setDupCheck("failed"),
+    );
   }, []);
 
   const duplicates = useMemo(() => (draft ? findDuplicates(draft, saved).slice(0, 3) : []), [draft, saved]);
@@ -107,14 +117,20 @@ export function ReviewScreen({ id, defaultOwner }: { id: string; defaultOwner: s
     form.append("front", card.front, "front.jpg");
     if (card.back) form.append("back", card.back, "back.jpg");
     try {
-      const res = await fetch("/api/contacts", { method: "POST", body: form });
+      const res = await fetchWithTimeout("/api/contacts", { method: "POST", body: form }, 58_000);
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? `Error ${res.status}`);
       invalidateContacts();
       await updateCard(id, { status: "saved", error: undefined });
       await goToNext();
     } catch (err) {
-      const message = err instanceof TypeError ? "No connection. Try again." : (err as Error).message;
+      // Tapping Approve again is safe: the server recognises a card it already saved.
+      const message =
+        err instanceof RequestTimeout
+          ? "Saving took too long (slow connection). Tap Approve again."
+          : err instanceof TypeError
+            ? "No connection. Try again."
+            : (err as Error).message;
       await updateCard(id, { status: "review", error: message });
       setError(message);
       setSaving(false);
@@ -162,7 +178,7 @@ export function ReviewScreen({ id, defaultOwner }: { id: string; defaultOwner: s
                 key={s}
                 disabled={s === "back" && !card.back}
                 onClick={() => setSide(s)}
-                className={`rounded-lg px-3 py-1 capitalize disabled:opacity-30 ${side === s ? "bg-brand text-white" : "bg-white text-stone-700 border border-stone-300"}`}
+                className={`rounded-lg px-3 py-1 capitalize disabled:opacity-30 ${side === s ? "bg-brand-dark text-on-accent" : "bg-white text-stone-700 border border-stone-300"}`}
               >
                 {s}
               </button>
@@ -179,6 +195,13 @@ export function ReviewScreen({ id, defaultOwner }: { id: string; defaultOwner: s
         </p>
       )}
 
+      {!isSaved && dupCheck !== "done" && (
+        <p className="text-sm text-stone-500">
+          {dupCheck === "checking"
+            ? "Checking the Sheet for duplicates…"
+            : "Could not check the Sheet for duplicates (no connection). You can still save."}
+        </p>
+      )}
       {duplicates.length > 0 && !isSaved && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
           <p className="font-medium text-amber-900">Possible duplicate already in the Sheet:</p>
@@ -192,7 +215,7 @@ export function ReviewScreen({ id, defaultOwner }: { id: string; defaultOwner: s
               <span>
                 Update <strong>{displayName(d) || d.email}</strong>
                 {d.company && ` · ${d.company}`}
-                <span className="block text-xs text-stone-600">
+                <span className="block text-sm text-stone-600">
                   {[d.event, d.scanned_at.slice(0, 10), d.status].filter(Boolean).join(" · ")}
                 </span>
               </span>
@@ -214,7 +237,7 @@ export function ReviewScreen({ id, defaultOwner }: { id: string; defaultOwner: s
         ))}
 
         <h2 className="mt-2 font-semibold text-brand">Where you met</h2>
-        <Field name="event" value={draft.event} onChange={setField} />
+        <Field name="event" value={draft.event} onChange={setField} list="cardscan-events" />
         <Field name="date_met" type="date" value={draft.date_met} onChange={setField} />
         <Field name="notes" value={draft.notes} onChange={setField} />
 
@@ -231,13 +254,14 @@ export function ReviewScreen({ id, defaultOwner }: { id: string; defaultOwner: s
             ))}
           </select>
         </label>
-        <Field name="owner" value={draft.owner} onChange={setField} />
+        <Field name="owner" value={draft.owner} onChange={setField} list="cardscan-owners" />
         <label className="flex flex-col gap-1 text-sm text-stone-600">
           {FIELD_LABELS.next_action}
           <NextActionPicker value={draft.next_action} onChange={(v) => setField("next_action", v)} />
         </label>
         <Field name="next_action_date" type="date" value={draft.next_action_date} onChange={setField} />
       </fieldset>
+      <SuggestionLists {...suggestions} />
 
       {!isSaved && <div aria-hidden style={{ height: Math.max(0, barHeight - 64) }} />}
       {!isSaved && (
@@ -257,7 +281,7 @@ export function ReviewScreen({ id, defaultOwner }: { id: string; defaultOwner: s
               <button
                 onClick={approve}
                 disabled={saving}
-                className="flex-1 rounded-xl bg-brand px-4 py-3 text-lg font-semibold text-white active:bg-brand-dark disabled:bg-mist"
+                className="flex-1 rounded-xl bg-brand-dark px-4 py-3 text-lg font-semibold text-on-accent active:bg-brand-darker disabled:bg-mist"
               >
                 {saving ? "Saving…" : mergeTarget ? "Approve & update" : "Approve & save"}
               </button>
@@ -275,25 +299,28 @@ function Field({
   onChange,
   flagged = false,
   type = "text",
+  list,
 }: {
   name: keyof ContactInput;
   value: string;
   onChange: (name: keyof ContactInput, value: string) => void;
   flagged?: boolean;
   type?: "text" | "date";
+  list?: string;
 }) {
   const cls = `rounded-lg border px-3 py-2 text-ink ${flagged ? "border-amber-400 bg-amber-50" : "border-stone-300 bg-white"}`;
   return (
     <label className="flex flex-col gap-1 text-sm text-stone-600">
       <span className="flex items-center gap-2">
         {FIELD_LABELS[name]}
-        {flagged && <span className="rounded bg-amber-400 px-1.5 text-xs font-semibold text-ink">Check</span>}
+        {flagged && <span className="rounded bg-amber-400 px-1.5 text-sm font-semibold text-warn-ink">Check</span>}
       </span>
       {MULTILINE.has(name) ? (
         <textarea value={value} rows={2} onChange={(e) => onChange(name, e.target.value)} className={cls} />
       ) : (
         <input
           type={type}
+          list={list}
           value={value}
           inputMode={INPUT_MODES[name]}
           autoCapitalize={INPUT_MODES[name] ? "off" : undefined}

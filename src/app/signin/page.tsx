@@ -24,7 +24,10 @@ export default async function SignInPage({ searchParams }: PageProps<"/signin">)
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-6 px-6">
       <div className="flex flex-col items-center text-center">
-        <Image src="/kinara-logo.png" alt="Kinara Vision Technologies" width={220} height={134} priority className="mb-8" />
+        {/* The logo is drawn in dark pencil, so it sits on its own white panel (readable in dark mode too). */}
+        <div className="mb-8 rounded-2xl bg-[#ffffff] p-3">
+          <Image src="/kinara-logo.png" alt="Kinara Vision Technologies" width={220} height={134} priority />
+        </div>
         <h1 className="text-3xl font-semibold text-brand">CardScan</h1>
         <p className="mt-2 text-stone-600">Scan business cards into the shared contact sheet.</p>
       </div>
@@ -34,7 +37,7 @@ export default async function SignInPage({ searchParams }: PageProps<"/signin">)
             ? ERROR_HINTS.AccessDenied
             : ((Object.hasOwn(ERROR_HINTS, String(error)) && ERROR_HINTS[String(error)]) || "Sign-in failed. Please try again.")}
           {error && error !== "AccessDenied" && (
-            <span className="mt-1 block text-xs text-red-700/80">Error code: {String(error)}</span>
+            <span className="mt-1 block text-sm text-red-700/80">Error code: {String(error)}</span>
           )}
         </p>
       )}
@@ -56,7 +59,7 @@ export default async function SignInPage({ searchParams }: PageProps<"/signin">)
             await signIn("google", { redirectTo: "/" });
           }}
         >
-          <button className="w-full rounded-xl bg-brand px-4 py-3 text-lg font-medium text-white active:bg-brand-dark">
+          <button className="w-full rounded-xl bg-brand-dark px-4 py-3 text-lg font-medium text-on-accent active:bg-brand-darker">
             Sign in with Google
           </button>
         </form>

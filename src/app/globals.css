@@ -3,7 +3,10 @@
 /* Colour palette (from the Flostream brand guidelines, Sept 2025). */
 @theme {
   --color-brand: #1a8dbd; /* Azure: main colour */
-  --color-brand-dark: #136f96;
+  --color-brand-dark: #136f96; /* buttons with white text: 5.5:1 contrast */
+  --color-brand-darker: #0e5878;
+  --color-on-accent: #ffffff; /* text on coloured buttons, in light and dark mode */
+  --color-warn-ink: #1c1917; /* text on the amber "Check" badge */
   --color-accent: #37beac; /* Turquoise */
   --color-mist: #9fbbc5; /* Grey Azure */
   --color-ink: #0d0e0f; /* Dark grey blue */
@@ -12,7 +15,44 @@
 }
 
 :root {
-  color-scheme: light;
+  color-scheme: light dark;
+}
+
+/* Dark mode follows the phone's setting. The app's colours are remapped here, so every screen
+   switches without per-element dark styles. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-white: #1d1b19; /* cards, fields, header */
+    --color-ink: #ecebea;
+    --color-stone-50: #121110; /* page background */
+    --color-stone-100: #1c1a18;
+    --color-stone-200: #2a2725;
+    --color-stone-300: #3f3b38;
+    --color-stone-400: #6b6560;
+    --color-stone-500: #a39c96;
+    --color-stone-600: #c4bdb7;
+    --color-stone-700: #ddd7d2;
+    --color-stone-800: #efebe7;
+    --color-stone-900: #faf8f6;
+    --color-amber-50: #2d2208;
+    --color-amber-100: #3d2d0b;
+    --color-amber-300: #8a5a12;
+    --color-amber-400: #f5b942;
+    --color-amber-900: #fcd88a;
+    --color-red-50: #3a1414;
+    --color-red-100: #4a1818;
+    --color-red-300: #8b2a2a;
+    --color-red-700: #fca5a5;
+    --color-red-800: #fecaca;
+    --color-emerald-50: #0f2a20;
+    --color-emerald-100: #123a2b;
+    --color-emerald-300: #1f6b4f;
+    --color-emerald-800: #86efac;
+    --color-sky-100: #0f2c42;
+    --color-sky-800: #93d4f8;
+    --color-teal-800: #5eead4;
+    --color-brand: #3aa7d6; /* links and headings on dark backgrounds */
+  }
 }
 
 body {

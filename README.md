@@ -9,6 +9,15 @@ A phone web app (PWA) for scanning business cards into a shared Google Sheet.
 
 Nothing is written to the Sheet until you approve a card.
 
+**Faster batches.**
+
+- **Import many photos (one card each):** pick a whole set of card photos from the gallery (for example shot earlier with the phone's camera); each becomes a queued card (front only).
+- Event and date are copied into each card when it is added. If you change them later, a button offers to apply the new event and date to the cards still in the queue.
+- Event and owner fields suggest earlier values, so spellings stay consistent and the Contacts filters stay tidy.
+- Reading or saving a card gives up after about 50 seconds on a bad connection; reading is retried automatically, saving asks you to tap Approve again (safe: a card is never saved twice).
+
+**Dark mode** follows the phone's setting.
+
 The **Contacts** tab lists everyone in the Sheet:
 
 - Search by name, company, email or notes. Filter by status, owner and event. Sort by newest or by next action date (overdue next actions show in red).
@@ -222,7 +231,9 @@ This is a practical summary, not legal advice.
 - Business contact information (name, title, work phone, work email, work address) is largely outside the PDPA's main obligations when collected for business purposes. Notes and photos can go beyond that, so treat everything as personal data.
 - Access: only the emails in `ALLOWED_EMAILS` can sign in. The Sheet and photos are shared only with those two people (and the service account).
 - Deletion: deleting a contact in the app removes the Sheet row and its card photos. In the test phase, a photo uploaded by the other person may not be deletable by you (Drive only lets the owner delete files in a personal Drive); the app tells you when that happens. In a Workspace shared drive this doesn't happen.
-- Offline copy: the phone keeps a copy of the app's screens (not the contact list) so it opens without signal. Signing out clears it.
+- Offline copy: the phone keeps a copy of the app's screens (not the contact list) so it opens without signal.
+- Signing out asks first, warns about cards not yet saved, and clears the queue, the card photos stored on the phone and the offline copy.
+- `/api/health` shows only whether each setting is present unless you are signed in; IDs and model checks need sign-in.
 - Model provider: in the test phase Gemini's free tier may use photos for training (see above). In the next phase Claude's API doesn't train on your data by default.
 - No analytics or third-party trackers. Secrets live only in Vercel's environment variables.
 - Photos are compressed on the phone (max 1600px JPEG) before upload.

@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect } from "react";
+import { fetchWithTimeout, RequestTimeout } from "@/lib/client/fetch";
 import { getCard, listCardInfo, onQueueChange, updateCard } from "@/lib/client/queue";
+
+// The server allows 60s per card; give up a little earlier and try again.
+const EXTRACT_TIMEOUT_MS = 50_000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let running = false;
@@ -45,9 +49,10 @@ async function drainQueue() {
 
     let res: Response;
     try {
-      res = await fetch("/api/extract", { method: "POST", body: form });
-    } catch {
-      await updateCard(next.id, { status: "queued", error: "No connection. Will retry." });
+      res = await fetchWithTimeout("/api/extract", { method: "POST", body: form }, EXTRACT_TIMEOUT_MS);
+    } catch (err) {
+      const error = err instanceof RequestTimeout ? "Slow connection. Will retry." : "No connection. Will retry.";
+      await updateCard(next.id, { status: "queued", error });
       await sleep(15_000);
       continue;
     }
