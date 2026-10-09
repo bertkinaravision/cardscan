@@ -95,7 +95,12 @@ test("LLM-2", "Daily quota used up on every model", async () => {
 test("LLM-3", "Gemini 500 internal error", async () => {
   await fake.set({ faults: { gemini: [{ status: 500, message: "An internal error has occurred" }] } });
   const r = await extract(await cookie(), { front: jpeg() });
-  record("LLM-3", "Model answers 500", "error the person understands", `${r.status} ${short(r.body)}`, r.status >= 500 && !looksRaw(r.body?.error));
+  record("LLM-3", "Model answers 500", "treated as temporary: 'busy, retrying', no raw error text", `${r.status} ${short(r.body)}`, r.status === 429 && !looksRaw(r.body?.error));
+});
+test("LLM-3b", "Gemini 400 (not a key problem)", async () => {
+  await fake.set({ faults: { gemini: [{ status: 400, message: "Request contains an invalid argument." }] } });
+  const r = await extract(await cookie(), { front: jpeg() });
+  record("LLM-3b", "Model answers 400", "clear error, no raw error text", `${r.status} ${short(r.body)}`, r.status >= 400 && !looksRaw(r.body?.error) && /Retry/.test(r.body?.error ?? ""));
 });
 test("LLM-4", "Model returns text that is not JSON", async () => {
   await fake.set({ faults: { gemini: [{ text: "Sure! Here is the card: Alex Lee" }] } });
