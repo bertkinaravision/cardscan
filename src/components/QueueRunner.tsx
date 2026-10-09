@@ -69,6 +69,9 @@ async function drainQueue() {
       if (res.status === 403) stopped = true;
       await updateCard(next.id, { status: "failed", error: body.error ?? `Error ${res.status}` });
       if (stopped) return;
+    } else if (!body.extraction) {
+      // A reply that could not be read (cut off, or a page from a Wi-Fi login): don't show an empty form.
+      await updateCard(next.id, { status: "failed", error: "Could not read the result. Tap Retry." });
     } else {
       await updateCard(next.id, { status: "review", error: undefined, extraction: body.extraction });
     }

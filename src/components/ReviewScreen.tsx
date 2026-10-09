@@ -117,7 +117,9 @@ export function ReviewScreen({ id, defaultOwner }: { id: string; defaultOwner: s
     form.append("front", card.front, "front.jpg");
     if (card.back) form.append("back", card.back, "back.jpg");
     try {
-      const res = await fetchWithTimeout("/api/contacts", { method: "POST", body: form }, 58_000);
+      // Wait longer than the server may run (maxDuration 60s), so "Approve again" can never
+      // overlap a save that is still in progress and add the same contact twice.
+      const res = await fetchWithTimeout("/api/contacts", { method: "POST", body: form }, 70_000);
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? `Error ${res.status}`);
       invalidateContacts();
