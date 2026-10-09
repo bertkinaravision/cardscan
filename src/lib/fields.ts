@@ -117,6 +117,16 @@ export const contactInputSchema = z.object({
 });
 export type ContactInput = z.infer<typeof contactInputSchema>;
 
+// A short message naming the first field that failed validation (shown to the person).
+export function invalidFieldMessage(error: z.ZodError): string {
+  const issue = error.issues[0];
+  const field = String(issue?.path[0] ?? "");
+  const label = FIELD_LABELS[field] ?? field;
+  if (issue?.code === "too_big") return `${label} is too long (at most ${issue.maximum} characters).`;
+  if (field === "status") return `Status must be one of: ${STATUSES.join(", ")}.`;
+  return label ? `${label} is not valid.` : "Some fields are invalid.";
+}
+
 export function emptyExtraction(): Extraction {
   return {
     ...(Object.fromEntries(EXTRACTED_FIELDS.map((f) => [f, ""])) as Record<ExtractedField, string>),

@@ -1,4 +1,4 @@
-import { contactInputSchema } from "@/lib/fields";
+import { contactInputSchema, invalidFieldMessage } from "@/lib/fields";
 import { deleteImages } from "@/lib/server/google";
 import { driveUploadMode } from "@/lib/server/env";
 import { errorResponse, HttpError, requireUser } from "@/lib/server/session";
@@ -12,7 +12,7 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/contacts/[id]"
     await requireUser(req);
     const { id } = await ctx.params;
     const parsed = patchSchema.safeParse(await req.json());
-    if (!parsed.success) throw new HttpError(400, "Some fields are invalid.");
+    if (!parsed.success) throw new HttpError(400, invalidFieldMessage(parsed.error));
     const updated = await updateContact(id, parsed.data);
     if (!updated) throw new HttpError(404, "Contact not found.");
     return Response.json({ contact: updated });

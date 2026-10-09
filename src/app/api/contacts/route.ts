@@ -1,4 +1,4 @@
-import { contactInputSchema, type ContactInput, type ContactRow } from "@/lib/fields";
+import { contactInputSchema, invalidFieldMessage, type ContactInput, type ContactRow } from "@/lib/fields";
 import { deleteImages, uploadImage } from "@/lib/server/google";
 import { readImage } from "@/lib/server/images";
 import { mergeContact, type Uploaded } from "@/lib/server/merge";
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
     const id = String(form.get("id") ?? "");
     if (!/^[a-zA-Z0-9-]{8,64}$/.test(id)) throw new HttpError(400, "Invalid id.");
     const parsed = contactInputSchema.safeParse(JSON.parse(String(form.get("contact") ?? "{}")));
-    if (!parsed.success) throw new HttpError(400, "Some fields are invalid.");
+    if (!parsed.success) throw new HttpError(400, invalidFieldMessage(parsed.error));
 
     // A retry after a lost response must not save or merge the same card twice.
     const { contacts: all, layout } = await listContactsWithLayout();
