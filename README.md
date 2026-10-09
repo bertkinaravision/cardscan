@@ -98,9 +98,9 @@ Vercel's free Hobby plan is meant for non-commercial use. Upgrade to Pro if that
 
 ## Environment variables
 
-See `.env.example` for a copy-paste template.
+See `.env.example` for a copy-paste template. **The examples below only show the format: use your own values.** After deploying, open `https://<your-app>/api/health` to check what the app sees (it flags missing values and leftover examples).
 
-| Name | Example | What it is |
+| Name | Format (not a real value) | What it is |
 |---|---|---|
 | `AUTH_SECRET` | (random) | Encrypts the sign-in cookie. Generate with `npx auth secret` or `openssl rand -base64 32`. |
 | `AUTH_GOOGLE_ID` | `123-abc.apps.googleusercontent.com` | OAuth client ID (step 3). |
