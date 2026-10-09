@@ -111,7 +111,7 @@ export function ScanScreen() {
               setEvent(e.target.value);
               writePref("cardscan:event", e.target.value);
             }}
-            placeholder="e.g. SuperAI Singapore"
+            placeholder="e.g. MedTech Asia"
             className="w-full min-w-0 rounded-lg border border-stone-300 bg-white px-3 py-2 text-stone-900"
           />
         </label>
@@ -160,6 +160,22 @@ export function ScanScreen() {
               </label>
             );
           })}
+        </div>
+        <div className="-mt-1 grid grid-cols-2 gap-3 text-center text-sm">
+          {(["front", "back"] as const).map((side) => (
+            <label key={side} className="cursor-pointer text-brand underline">
+              {side === "front" ? "Front" : "Back"} from photos
+              <input
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={(e) => {
+                  pickPhoto(side, e.target.files?.[0]);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          ))}
         </div>
         {error && <p className="text-sm text-red-700">{error}</p>}
         <button
