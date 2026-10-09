@@ -12,7 +12,8 @@ async function readError(res: Response): Promise<string> {
 
 export function fetchContacts(force = false): Promise<ContactRow[]> {
   if (!force && cache && Date.now() - cache.at < MAX_AGE) return cache.promise;
-  const promise = fetchWithTimeout("/api/contacts", {}, 30_000).then(async (res) => {
+  // The server may wait up to 30s for Google's per-minute quota; allow for that.
+  const promise = fetchWithTimeout("/api/contacts", {}, 45_000).then(async (res) => {
     if (!res.ok) throw new Error(await readError(res));
     return ((await res.json()) as { contacts: ContactRow[] }).contacts;
   });

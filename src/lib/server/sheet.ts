@@ -101,10 +101,11 @@ async function ensureSheet(): Promise<SheetInfo> {
     (m) => m.metadataKey === HEADER_KEY && m.location?.dimensionRange?.sheetId === sheetId && m.location.dimensionRange.dimension === "ROWS",
   );
   const markedRow = headerMeta ? (headerMeta.location!.dimensionRange!.startIndex ?? 0) + 1 : null;
-  const top = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: `${quoted(title)}!${markedRow ? `${markedRow}:${markedRow}` : "1:10"}`,
-  });
+  const top = await sheets.spreadsheets.values
+    .get({ spreadsheetId, range: `${quoted(title)}!${markedRow ? `${markedRow}:${markedRow}` : "1:10"}` })
+    .catch((err) => {
+      throw explainGoogleError(err, "sheet");
+    });
   const topRows = (top.data.values ?? []).map((r) => r.map((h) => String(h).trim()));
   const idRow = topRows.findIndex((r) => r.some((h) => headerKey(h) === "id"));
   const headerRow = markedRow ?? (idRow >= 0 ? idRow + 1 : 1);
@@ -261,10 +262,14 @@ function toValues(keys: (SheetColumn | null)[], row: Partial<ContactRow>): strin
 
 async function readAll(): Promise<{ info: SheetInfo; rows: { rowNumber: number; values: string[] }[] }> {
   const info = await ensureSheet();
-  const res = await sheetsClient().spreadsheets.values.get({
-    spreadsheetId: requireEnv("SHEET_ID"),
-    range: `${quoted(info.title)}!A${info.headerRow + 1}:${columnLetter(info.headers.length - 1)}`,
-  });
+  const res = await sheetsClient()
+    .spreadsheets.values.get({
+      spreadsheetId: requireEnv("SHEET_ID"),
+      range: `${quoted(info.title)}!A${info.headerRow + 1}:${columnLetter(info.headers.length - 1)}`,
+    })
+    .catch((err) => {
+      throw explainGoogleError(err, "sheet");
+    });
   const rows = (res.data.values ?? []).map((v, i) => ({ rowNumber: i + info.headerRow + 1, values: v.map(String) }));
   const filled = rows.filter((r) => r.values.some(Boolean));
   return { info: { ...info, lastRow: filled.at(-1)?.rowNumber ?? info.headerRow }, rows };

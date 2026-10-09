@@ -114,6 +114,7 @@ assert.match(explainGoogleError({ code: 404, message: "Requested entity was not 
 assert.match(explainGoogleError({ code: 403, message: "Request had insufficient authentication scopes." }, "drive").message, /tick the Google Drive box/);
 assert.match(explainGoogleError({ code: 404, message: "File not found: folder1." }, "drive").message, /DRIVE_FOLDER_ID/);
 assert.match(explainGoogleError({ code: 403, message: "Google Sheets API has not been used in project 1 before or it is disabled." }, "sheet").message, /not enabled/);
+assert.match(explainGoogleError({ code: 503, message: "The service is currently unavailable." }, "sheet").message, /isn't responding/);
 console.log("Error message tests passed.");
 
 // 8. Lenient reading of the model's answer.

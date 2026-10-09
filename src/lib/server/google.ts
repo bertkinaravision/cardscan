@@ -45,6 +45,7 @@ export function explainGoogleError(err: unknown, what: "sheet" | "drive"): Error
     })();
     if (code === 403) return new Error(`The service account can't open the Sheet. Share the Sheet with ${who} as Editor.`);
     if (code === 404) return new Error("Sheet not found. Check SHEET_ID (the part between /d/ and /edit in the Sheet's URL).");
+    if (typeof code === "number" && code >= 500) return new Error("Google Sheets isn't responding right now. Try again in a minute.");
   } else {
     if (code === 403 && /insufficient|scope/i.test(msg))
       return new Error("CardScan has no Google Drive access. Sign out, sign in again, and tick the Google Drive box on Google's screen.");
@@ -58,8 +59,9 @@ export function explainGoogleError(err: unknown, what: "sheet" | "drive"): Error
   return err instanceof Error ? err : new Error(String(err));
 }
 
-// Google answers 429 when a batch of saves goes over the per-minute quota (about 60 requests),
-// and occasionally 5xx. Wait and retry: 2s, 4s, 8s, 16s (30s in all, so the minute can roll over).
+// Google answers 429 when a batch of saves goes over the per-minute quota (about 60 requests):
+// wait and retry 2s, 4s, 8s, 16s (30s in all, so the minute can roll over). A 5xx is retried
+// twice (2s, 4s); if Google is still failing it is likely down for a while, so say so quickly.
 // Writes (POST) are retried only on 429, where Google guarantees nothing was written; requests that
 // were cancelled are never retried.
 const MAX_RETRIES = 4;
@@ -75,7 +77,7 @@ const retryConfig: RetryConfig = {
     if (status === 429) return true;
     if ((err.config?.method ?? "GET").toUpperCase() === "POST") return false;
     if (status === undefined) return attempt < 2; // no answer at all: try twice
-    return status >= 500;
+    return status >= 500 && attempt < 2;
   },
   retryBackoff: (err) => new Promise<void>((r) => setTimeout(r, 2000 * 2 ** attemptOf(err))),
 };

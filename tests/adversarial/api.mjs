@@ -311,7 +311,7 @@ test("NET-6", "Sheets down for a long time on list", async () => {
   await fake.set({ faults: { sheetsGetCount: 0 } });
   const s = Math.round((Date.now() - t) / 1000);
   record("NET-6", "Sheets 503 on every call (list contacts)", "clear error before the phone's 30s timeout",
-    `${r.status} ${short(r.body)} after ${s}s`, r.status >= 500 && s < 30 && !looksRaw(r.body?.error));
+    `${r.status} ${short(r.body)} after ${s}s`, r.status >= 500 && s < 30 && /isn't responding/.test(r.body?.error ?? ""));
 });
 test("NET-7", "Sheet not shared with the service account", async () => {
   await fake.set({ faults: { metaStatus: 403, metaCount: 1 } });
