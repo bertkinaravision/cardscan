@@ -19,7 +19,6 @@ import { getCard, listCardInfo, removeCard, updateCard, type QueuedCard } from "
 const MULTILINE = new Set(["address", "other", "notes"]);
 const INPUT_MODES: Partial<Record<string, "email" | "tel" | "url">> = {
   email: "email",
-  phone: "tel",
   mobile: "tel",
   website: "url",
   linkedin: "url",

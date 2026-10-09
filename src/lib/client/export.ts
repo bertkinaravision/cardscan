@@ -23,14 +23,12 @@ export function toVCard(rows: ContactRow[]): string {
       const lines = [
         "BEGIN:VCARD",
         "VERSION:3.0",
-        `N:${vEscape(r.last_name)};${vEscape(r.first_name)};;;`,
-        `FN:${vEscape([r.first_name, r.last_name].filter(Boolean).join(" ") || r.name_original_script || r.company)}`,
+        `N:${vEscape(r.last_name)};${vEscape(r.first_name)};;${vEscape(r.salutation)};`,
+        `FN:${vEscape([r.salutation, r.first_name, r.last_name].filter(Boolean).join(" ") || r.company)}`,
       ];
-      if (r.name_original_script) lines.push(`NICKNAME:${vEscape(r.name_original_script)}`);
       if (r.company) lines.push(`ORG:${vEscape(r.company)}`);
       if (r.job_title) lines.push(`TITLE:${vEscape(r.job_title)}`);
       if (r.email) lines.push(`EMAIL;TYPE=INTERNET,WORK:${vEscape(r.email)}`);
-      if (r.phone) lines.push(`TEL;TYPE=WORK,VOICE:${vEscape(r.phone)}`);
       if (r.mobile) lines.push(`TEL;TYPE=CELL:${vEscape(r.mobile)}`);
       if (r.website) lines.push(`URL:${vEscape(r.website)}`);
       if (r.linkedin) lines.push(`X-SOCIALPROFILE;TYPE=linkedin:${vEscape(r.linkedin)}`);

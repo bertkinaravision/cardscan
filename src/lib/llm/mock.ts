@@ -7,17 +7,16 @@ export const mockExtractor: VisionExtractor = {
     return JSON.stringify({
       first_name: "David",
       last_name: "Tan",
-      name_original_script: "陈伟明",
+      salutation: "Dr.",
       job_title: "Director, Business Development",
       company: "Example Pte Ltd",
       email: "david.tan@example.com.sg",
-      phone: "+65 6123 4567",
       mobile: "+65 9123 4567",
       website: "example.com.sg",
       address: "1 Example Road, #10-01, Singapore 123456",
       linkedin: "",
-      other: "WeChat: davidtan",
-      low_confidence: ["name_original_script", "mobile"],
+      other: "Office: +65 6123 4567; WeChat: davidtan",
+      low_confidence: ["mobile"],
     });
   },
 };

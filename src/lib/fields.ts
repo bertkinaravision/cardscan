@@ -2,13 +2,12 @@ import { z } from "zod";
 
 // Fields the vision model extracts from a card. Order is the order shown on the review screen.
 export const EXTRACTED_FIELDS = [
+  "salutation",
   "first_name",
   "last_name",
-  "name_original_script",
   "job_title",
   "company",
   "email",
-  "phone",
   "mobile",
   "website",
   "address",
@@ -18,13 +17,12 @@ export const EXTRACTED_FIELDS = [
 export type ExtractedField = (typeof EXTRACTED_FIELDS)[number];
 
 export const FIELD_LABELS: Record<string, string> = {
+  salutation: "Salutation",
   first_name: "First name",
   last_name: "Last name",
-  name_original_script: "Name (original script)",
   job_title: "Job title",
   company: "Company",
   email: "Email",
-  phone: "Phone",
   mobile: "Mobile",
   website: "Website",
   address: "Address",
@@ -72,13 +70,12 @@ export type SheetColumn = (typeof SHEET_COLUMNS)[number];
 export type ContactRow = Record<SheetColumn, string>;
 
 const extractedShape = {
+  salutation: z.string(),
   first_name: z.string(),
   last_name: z.string(),
-  name_original_script: z.string(),
   job_title: z.string(),
   company: z.string(),
   email: z.string(),
-  phone: z.string(),
   mobile: z.string(),
   website: z.string(),
   address: z.string(),

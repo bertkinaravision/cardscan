@@ -60,7 +60,6 @@ export function ContactsScreen() {
           [
             c.first_name,
             c.last_name,
-            c.name_original_script,
             c.company,
             c.job_title,
             c.email,
@@ -256,10 +255,7 @@ function ContactItem({
       <div className="flex items-start gap-2 p-3">
         <button onClick={onToggle} className="min-w-0 flex-1 text-left" aria-expanded={open}>
           <p className="truncate font-medium">
-            {displayName(c) || c.name_original_script || c.company || "(no name)"}
-            {c.name_original_script && displayName(c) && (
-              <span className="ml-1 font-normal text-stone-500">{c.name_original_script}</span>
-            )}
+            {displayName(c) || c.company || "(no name)"}
           </p>
           <p className="truncate text-sm text-stone-600">{[c.job_title, c.company].filter(Boolean).join(" · ")}</p>
           <p className="truncate text-xs text-stone-500">
@@ -326,7 +322,6 @@ function ContactDetails({
         <dl className="grid grid-cols-[7rem_1fr] gap-x-2 gap-y-1">
           {c.email && <Row label="Email" value={<a className="text-brand underline" href={`mailto:${c.email}`}>{c.email}</a>} />}
           {c.mobile && <Row label="Mobile" value={<a className="text-brand underline" href={`tel:${tel(c.mobile)}`}>{c.mobile}</a>} />}
-          {c.phone && <Row label="Phone" value={<a className="text-brand underline" href={`tel:${tel(c.phone)}`}>{c.phone}</a>} />}
           {c.website && <Row label="Website" value={<a className="text-brand underline" href={href(c.website)} target="_blank" rel="noreferrer">{c.website}</a>} />}
           {c.linkedin && <Row label="LinkedIn" value={<a className="text-brand underline" href={href(c.linkedin)} target="_blank" rel="noreferrer">{c.linkedin}</a>} />}
           {c.address && <Row label="Address" value={c.address} />}

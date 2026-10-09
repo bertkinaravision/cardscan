@@ -150,7 +150,10 @@ The queue is stored on the phone, so you can keep scanning with bad signal. Card
 
 One row per approved contact, in this column order:
 
-`id, first_name, last_name, name_original_script, job_title, company, email, phone, mobile, website, address, linkedin, other, event, date_met, notes, status, owner, next_action, next_action_date, scanned_by, scanned_at, last_updated, image_front_link, image_back_link, image_file_ids`
+`id, salutation, first_name, last_name, job_title, company, email, mobile, website, address, linkedin, other, event, date_met, notes, status, owner, next_action, next_action_date, scanned_by, scanned_at, last_updated, image_front_link, image_back_link, image_file_ids, source_card_ids`
+
+- `salutation` holds titles such as Dr., Prof., Mr., Ms.; letters after a name (PhD, MBA) go to `other`.
+- `mobile` is the mobile number (or the main number if there is no mobile). Office, direct line and fax numbers go to `other`, as does a name printed only in Chinese or Japanese.
 
 - `status` has a dropdown: To contact, Contacted, In conversation, Closed, Not relevant.
 - `id` and `image_file_ids` are used by the app to find, edit and delete rows. Don't change them.

@@ -208,14 +208,24 @@ console.log("Error message tests passed.");
 // 8. Lenient reading of the model's answer.
 const { normalize } = await import("../src/lib/llm/index");
 const { extractionSchema } = await import("../src/lib/fields");
-const n = extractionSchema.parse(normalize({ first_name: " Ann ", last_name: null, phone: 6512345678, other: ["a", "b"], low_confidence: ["email", "bogus", "email"] }));
+const n = extractionSchema.parse(normalize({ first_name: " Ann ", last_name: null, mobile: 6512345678, other: ["a", "b"], low_confidence: ["email", "bogus", "email"] }));
 assert.equal(n.first_name, "Ann");
 assert.equal(n.last_name, "");
-assert.equal(n.phone, "6512345678");
+assert.equal(n.mobile, "6512345678");
 assert.equal(n.other, "a; b");
 assert.equal(n.company, "", "missing field filled");
 assert.deepEqual(n.low_confidence, ["email"]);
-const nested = extractionSchema.parse(normalize({ address: { street: "1 Road", city: "Singapore" }, phone: [{ type: "work", number: "+65 1" }] }));
+const nested = extractionSchema.parse(normalize({ address: { street: "1 Road", city: "Singapore" }, mobile: [{ type: "work", number: "+65 1" }] }));
 assert.equal(nested.address, "1 Road, Singapore");
-assert.equal(nested.phone, "work, +65 1");
+assert.equal(nested.mobile, "work, +65 1");
 console.log("Model answer normalisation tests passed.");
+
+// 9. Titles move out of the first name.
+const t = (first: string, salutation = "") => extractionSchema.parse(normalize({ first_name: first, salutation }));
+assert.deepEqual([t("Dr. Bert").salutation, t("Dr. Bert").first_name], ["Dr.", "Bert"]);
+assert.deepEqual([t("Prof Dr Wei Ming").salutation, t("Prof Dr Wei Ming").first_name], ["Prof Dr", "Wei Ming"]);
+assert.deepEqual([t("Assoc. Prof. Siti").salutation, t("Assoc. Prof. Siti").first_name], ["Assoc. Prof.", "Siti"]);
+assert.deepEqual([t("Dato' Ahmad").salutation, t("Dato' Ahmad").first_name], ["Dato'", "Ahmad"]);
+assert.deepEqual([t("Drew").salutation, t("Drew").first_name], ["", "Drew"], "names starting like a title are untouched");
+assert.deepEqual([t("Mr. Tan", "Dr.").salutation, t("Mr. Tan", "Dr.").first_name], ["Dr. Mr.", "Tan"]);
+console.log("Salutation tests passed.");

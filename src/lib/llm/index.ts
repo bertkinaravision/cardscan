@@ -48,6 +48,22 @@ function flatten(v: unknown): string {
   return String(v).trim();
 }
 
+// Titles that belong in "salutation", never in the first name.
+const SALUTATION =
+  /^((?:assoc(?:iate)?\.?\s*prof(?:essor)?|a\/prof|asst\.?\s*prof|prof(?:essor)?|dr|mr|mrs|ms|mdm|miss|mx|ir|sir|dame|rev|hon|dato'?|datuk|datin|tan sri|puan sri|tun|toh puan)\.?)\s+/i;
+
+function splitSalutation(out: Record<string, unknown>) {
+  let first = String(out.first_name ?? "");
+  const found: string[] = [];
+  for (let m = first.match(SALUTATION); m; m = first.match(SALUTATION)) {
+    found.push(m[1]);
+    first = first.slice(m[0].length);
+  }
+  if (found.length === 0) return;
+  out.first_name = first.trim();
+  out.salutation = [String(out.salutation ?? ""), ...found].filter(Boolean).join(" ").trim();
+}
+
 // Small slips in the model's answer (a missing field, null instead of "", a number, an unknown
 // field name in low_confidence) shouldn't fail the whole card; the person reviews it anyway.
 export function normalize(json: unknown): unknown {
@@ -58,6 +74,7 @@ export function normalize(json: unknown): unknown {
     const v = src[f];
     out[f] = flatten(v);
   }
+  splitSalutation(out);
   const lc = Array.isArray(src.low_confidence) ? src.low_confidence : [];
   out.low_confidence = [...new Set(lc.filter((f): f is ExtractedField => (EXTRACTED_FIELDS as readonly unknown[]).includes(f)))];
   return out;
