@@ -272,16 +272,36 @@ export async function listContactsWithLayout(): Promise<{ contacts: ContactRow[]
 }
 
 // `layout` may be passed when it was read moments ago in the same request (saves Sheets requests).
-export async function appendContact(row: ContactRow, layout?: SheetInfo): Promise<void> {
+// If the same card is saved twice at the same moment (Approve tapped again while the first save
+// was still running on bad Wi-Fi), both rows land. The later one then clears its own row and
+// reports `duplicate`, so exactly one row is kept.
+export async function appendContact(row: ContactRow, layout?: SheetInfo): Promise<{ duplicate: boolean }> {
   const info = layout ?? (await ensureSheet());
-  await sheetsClient().spreadsheets.values.append({
-    spreadsheetId: requireEnv("SHEET_ID"),
+  const sheets = sheetsClient();
+  const spreadsheetId = requireEnv("SHEET_ID");
+  const res = await sheets.spreadsheets.values.append({
+    spreadsheetId,
     range: `${quoted(info.title)}!A${info.headerRow}`,
     // RAW so text from a card can never be run as a Sheets formula.
     valueInputOption: "RAW",
     insertDataOption: "INSERT_ROWS",
     requestBody: { values: [toValues(info.keys, row)] },
   });
+  const written = Number(res.data.updates?.updatedRange?.match(/!\D*(\d+)/)?.[1]);
+  const idCol = columnLetter(info.keys.indexOf("id"));
+  const ids = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${quoted(info.title)}!${idCol}${info.headerRow + 1}:${idCol}`,
+  });
+  const rowsWithId = (ids.data.values ?? [])
+    .map((v, i) => (String(v[0] ?? "") === row.id ? i + info.headerRow + 1 : 0))
+    .filter(Boolean);
+  if (rowsWithId.length < 2 || rowsWithId[0] === written || !rowsWithId.includes(written)) return { duplicate: false };
+  await sheets.spreadsheets.values.clear({
+    spreadsheetId,
+    range: `${quoted(info.title)}!A${written}:${columnLetter(info.keys.length - 1)}${written}`,
+  });
+  return { duplicate: true };
 }
 
 // Finds a contact's row, then re-reads its id cell right before a write: if someone deleted a row

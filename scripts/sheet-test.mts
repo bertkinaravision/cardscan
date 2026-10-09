@@ -221,3 +221,14 @@ ops.deleteTab("CRM 2026");
 await assert.rejects(listContacts(), /tab is missing/);
 assert.equal(ops.tab("Contacts"), undefined, "still no silent new tab");
 console.log("Renamed and deleted tab tests passed.");
+
+// 16. The same card saved twice at the same moment: one row is kept.
+fake.state.meta = [];
+fake.state.tabs = [{ title: "Sheet1", sheetId: 0, rows: [] }];
+await appendContact(row("w1", { first_name: "Warm" }));
+fake.faults.appendDelayMs = 300;
+const twice = await Promise.all([appendContact(row("d1", { first_name: "Double" })), appendContact(row("d1", { first_name: "Double" }))]);
+fake.faults.appendDelayMs = 0;
+assert.deepEqual(twice.map((r) => r.duplicate).sort(), [false, true], "the later save reports a duplicate");
+assert.equal((await listContacts()).filter((c) => c.id === "d1").length, 1, "one row kept");
+console.log("Double save test passed.");

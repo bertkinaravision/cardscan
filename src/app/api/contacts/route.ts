@@ -56,7 +56,13 @@ export async function POST(req: Request) {
         if (!updated) throw new HttpError(404, "The contact to update was deleted meanwhile. Save this card as a new contact.");
         return Response.json({ id: existing.id, merged: true });
       }
-      await appendContact(newRow(id, c, user.email, now, uploaded), layout);
+      const { duplicate } = await appendContact(newRow(id, c, user.email, now, uploaded), layout);
+      if (duplicate) {
+        // Saved by an earlier request for the same card: this copy's photos aren't used.
+        const ids = [uploaded.front?.id, uploaded.back?.id].filter((x): x is string => !!x);
+        await deleteImages(user.googleAccessToken, ids).catch(() => {});
+        return Response.json({ id, alreadySaved: true });
+      }
       return Response.json({ id });
     } catch (err) {
       // The write may have gone through even though its reply was lost: then keep the photos and report success.
