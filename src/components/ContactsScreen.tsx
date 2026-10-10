@@ -6,6 +6,7 @@ import { deleteContact, displayName, fetchContacts, patchContact } from "@/lib/c
 import { download, toCsv, toVCard } from "@/lib/client/export";
 import { NextActionPicker } from "@/components/NextActionPicker";
 import { SuggestionLists } from "@/lib/client/suggestions";
+import { today } from "@/lib/client/date";
 
 const STATUS_STYLES: Record<string, string> = {
   "To contact": "bg-brand/10 text-brand border-brand/30",
@@ -16,8 +17,6 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 type SortKey = "newest" | "next_action";
-
-const today = () => new Date().toLocaleDateString("en-CA");
 
 function distinct(rows: ContactRow[], key: keyof ContactRow) {
   return [...new Set(rows.map((r) => r[key]).filter(Boolean))].sort((a, b) => a.localeCompare(b));

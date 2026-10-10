@@ -15,6 +15,7 @@ import {
   type CardStatus,
   type QueuedCard,
 } from "@/lib/client/queue";
+import { today } from "@/lib/client/date";
 
 const STATUS_STYLES: Record<CardStatus, string> = {
   queued: "bg-stone-200 text-stone-700",
@@ -24,8 +25,6 @@ const STATUS_STYLES: Record<CardStatus, string> = {
   saved: "bg-emerald-100 text-emerald-800",
   failed: "bg-red-100 text-red-800",
 };
-
-const today = () => new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD in local time
 
 function readPref(key: string, fallback: string) {
   try {

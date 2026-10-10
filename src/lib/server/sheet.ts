@@ -4,6 +4,10 @@ import { requireEnv } from "./env";
 import { explainGoogleError, sheetsClient } from "./google";
 
 const tabName = () => process.env.SHEET_TAB || "Contacts";
+// For .catch on Sheets calls: turns Google's error into a setup hint a person can act on.
+const sheetError = (err: unknown): never => {
+  throw explainGoogleError(err, "sheet");
+};
 const quoted = (title: string) => `'${title.replace(/'/g, "''")}'`;
 
 function columnLetter(index: number): string {
@@ -48,6 +52,10 @@ const TAB_KEY = "cardscan_tab";
 const HEADER_KEY = "cardscan_header";
 const COLUMN_KEY = "cardscan_column";
 const isColumn = (v: unknown): v is SheetColumn => (SHEET_COLUMNS as readonly unknown[]).includes(v);
+// A request creating one of those markers.
+const marker = (metadataKey: string, metadataValue: string, location: object) => ({
+  createDeveloperMetadata: { developerMetadata: { metadataKey, metadataValue, location, visibility: "DOCUMENT" } },
+});
 
 type Meta = {
   metadataId?: number | null;
@@ -68,9 +76,7 @@ async function ensureSheet(): Promise<SheetInfo> {
       spreadsheetId,
       requestBody: { dataFilters: [SETUP_KEY, TAB_KEY, HEADER_KEY, COLUMN_KEY].map((metadataKey) => ({ developerMetadataLookup: { metadataKey } })) },
     }),
-  ]).catch((err) => {
-    throw explainGoogleError(err, "sheet");
-  });
+  ]).catch(sheetError);
   const found: Meta[] = (search.data.matchedDeveloperMetadata ?? []).map((m) => m.developerMetadata ?? {});
   const setupMeta = found.find((m) => m.metadataKey === SETUP_KEY);
 
@@ -102,9 +108,7 @@ async function ensureSheet(): Promise<SheetInfo> {
   const markedRow = headerMeta ? (headerMeta.location!.dimensionRange!.startIndex ?? 0) + 1 : null;
   const top = await sheets.spreadsheets.values
     .get({ spreadsheetId, range: `${quoted(title)}!${markedRow ? `${markedRow}:${markedRow}` : "1:10"}` })
-    .catch((err) => {
-      throw explainGoogleError(err, "sheet");
-    });
+    .catch(sheetError);
   const topRows = (top.data.values ?? []).map((r) => r.map((h) => String(h).trim()));
   const idRow = topRows.findIndex((r) => r.some((h) => headerKey(h) === "id"));
   const headerRow = markedRow ?? (idRow >= 0 ? idRow + 1 : 1);
@@ -137,37 +141,15 @@ async function ensureSheet(): Promise<SheetInfo> {
   // Formatting and markers go to Google in one request.
   const requests: object[] = [];
   if (!marked.includes(sheetId)) {
-    requests.push({
-      createDeveloperMetadata: {
-        developerMetadata: { metadataKey: TAB_KEY, metadataValue: "1", location: { sheetId }, visibility: "DOCUMENT" },
-      },
-    });
+    requests.push(marker(TAB_KEY, "1", { sheetId }));
   }
   keys.forEach((k, i) => {
     if (k && marks.get(i) !== k) {
-      requests.push({
-        createDeveloperMetadata: {
-          developerMetadata: {
-            metadataKey: COLUMN_KEY,
-            metadataValue: k,
-            location: { dimensionRange: { sheetId, dimension: "COLUMNS", startIndex: i, endIndex: i + 1 } },
-            visibility: "DOCUMENT",
-          },
-        },
-      });
+      requests.push(marker(COLUMN_KEY, k, { dimensionRange: { sheetId, dimension: "COLUMNS", startIndex: i, endIndex: i + 1 } }));
     }
   });
   if (!headerMeta) {
-    requests.push({
-      createDeveloperMetadata: {
-        developerMetadata: {
-          metadataKey: HEADER_KEY,
-          metadataValue: "1",
-          location: { dimensionRange: { sheetId, dimension: "ROWS", startIndex: headerRow - 1, endIndex: headerRow } },
-          visibility: "DOCUMENT",
-        },
-      },
-    });
+    requests.push(marker(HEADER_KEY, "1", { dimensionRange: { sheetId, dimension: "ROWS", startIndex: headerRow - 1, endIndex: headerRow } }));
   }
   // Formatting is applied when columns are added, and once to Sheets set up by an older version
   // (marked in the Sheet's hidden developer metadata), so formatting you change later is left alone.
@@ -214,16 +196,7 @@ async function ensureSheet(): Promise<SheetInfo> {
               fields: "metadataValue",
             },
           }
-        : {
-            createDeveloperMetadata: {
-              developerMetadata: {
-                metadataKey: SETUP_KEY,
-                metadataValue: SETUP_VERSION,
-                location: { spreadsheet: true },
-                visibility: "DOCUMENT",
-              },
-            },
-          },
+        : marker(SETUP_KEY, SETUP_VERSION, { spreadsheet: true }),
       // Next action: same choices as the app; anything else may still be typed.
       {
         setDataValidation: {
@@ -265,9 +238,7 @@ async function readAll(): Promise<{ info: SheetInfo; rows: { rowNumber: number; 
       spreadsheetId: requireEnv("SHEET_ID"),
       range: `${quoted(info.title)}!A${info.headerRow + 1}:${columnLetter(info.keys.length - 1)}`,
     })
-    .catch((err) => {
-      throw explainGoogleError(err, "sheet");
-    });
+    .catch(sheetError);
   const rows = (res.data.values ?? []).map((v, i) => ({ rowNumber: i + info.headerRow + 1, values: v.map(String) }));
   const filled = rows.filter((r) => r.values.some(Boolean));
   return { info: { ...info, lastRow: filled.at(-1)?.rowNumber ?? info.headerRow }, rows };
