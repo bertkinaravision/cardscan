@@ -4,7 +4,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { extractionSchema } from "@/lib/fields";
 import { requireEnv } from "@/lib/server/env";
 import { EXTRACTION_PROMPT } from "./prompt";
-import { LlmRateLimitError, type CardImage, type VisionExtractor } from "./types";
+import { LlmBusyError, type CardImage, type VisionExtractor } from "./types";
 
 export function anthropicExtractor(model: string): VisionExtractor {
   const client = new Anthropic({ apiKey: requireEnv("ANTHROPIC_API_KEY") });
@@ -35,7 +35,7 @@ export function anthropicExtractor(model: string): VisionExtractor {
         if (res.stop_reason === "refusal") throw new Error("The model declined to read this card.");
         return res.parsed_output ? JSON.stringify(res.parsed_output) : "";
       } catch (err) {
-        if (err instanceof Anthropic.RateLimitError || err instanceof Anthropic.InternalServerError) throw new LlmRateLimitError(err.message);
+        if (err instanceof Anthropic.RateLimitError || err instanceof Anthropic.InternalServerError) throw new LlmBusyError(err.message);
         throw err;
       }
     },

@@ -1,4 +1,4 @@
-import { extractCard, LlmRateLimitError } from "@/lib/llm";
+import { extractCard, LlmBusyError } from "@/lib/llm";
 import { readImage } from "@/lib/server/images";
 import { errorResponse, HttpError, readForm, requireUser } from "@/lib/server/session";
 
@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     const extraction = await extractCard(images);
     return Response.json({ extraction });
   } catch (err) {
-    if (err instanceof LlmRateLimitError) {
+    if (err instanceof LlmBusyError) {
       return Response.json({ error: "The AI model is busy. Retrying shortly." }, { status: 429 });
     }
     return errorResponse(err);

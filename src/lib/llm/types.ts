@@ -5,4 +5,5 @@ export interface VisionExtractor {
   extract(images: CardImage[]): Promise<string>;
 }
 
-export class LlmRateLimitError extends Error {}
+// The model is busy or briefly failing (rate limit, overload, server error): worth retrying.
+export class LlmBusyError extends Error {}

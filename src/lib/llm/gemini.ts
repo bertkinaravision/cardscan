@@ -4,7 +4,7 @@ import { z } from "zod";
 import { extractionSchema } from "@/lib/fields";
 import { requireEnv } from "@/lib/server/env";
 import { EXTRACTION_PROMPT } from "./prompt";
-import { LlmRateLimitError, type CardImage, type VisionExtractor } from "./types";
+import { LlmBusyError, type CardImage, type VisionExtractor } from "./types";
 
 // Gemini accepts a subset of JSON Schema; drop the "$schema" marker zod adds.
 const responseSchema: Record<string, unknown> = z.toJSONSchema(extractionSchema);
@@ -48,7 +48,7 @@ export function geminiExtractor(models: string[]): VisionExtractor {
         throw new ModelUnavailable(`${model} does not exist or was retired (check LLM_MODEL / LLM_FALLBACK_MODELS)`);
       // 429 = rate limit, 5xx = a passing problem on Google's side (overloaded, internal error,
       // timeout): worth retrying.
-      if (err instanceof ApiError && (err.status === 429 || err.status >= 500)) throw new LlmRateLimitError(err.message);
+      if (err instanceof ApiError && (err.status === 429 || err.status >= 500)) throw new LlmBusyError(err.message);
       if (err instanceof ApiError && (err.status === 400 || err.status === 403) && /api key|API_KEY/i.test(err.message))
         throw new Error("GEMINI_API_KEY is missing or invalid. Create a key at aistudio.google.com.");
       if (err instanceof ApiError) {

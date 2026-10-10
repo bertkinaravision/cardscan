@@ -5,7 +5,7 @@ import { geminiExtractor } from "./gemini";
 import { mockExtractor } from "./mock";
 import type { CardImage, VisionExtractor } from "./types";
 
-export { LlmRateLimitError } from "./types";
+export { LlmBusyError } from "./types";
 
 const DEFAULT_MODELS: Record<string, string> = {
   gemini: "gemini-3.5-flash-lite",
