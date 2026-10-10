@@ -251,6 +251,8 @@ Set `LLM_PROVIDER=mock` to try the app without an AI key (every card returns the
 
 Checks: `npm run lint`, `npx tsc --noEmit`, `npm test` (Sheet, Drive and merge logic against a fake Google API; no account needed), `npm run build`.
 
+Adversarial tests (the whole app against a fake Google and Gemini; no account or key needed): `npm run build`, then `tests/adversarial/start-server.sh`, then `node tests/adversarial/api.mjs` and `node tests/adversarial/ui.mjs` (pass a test id, e.g. `ST-3`, to run one).
+
 ## Code map
 
 - `src/components/ScanScreen.tsx`: capture screen and queue.
@@ -260,7 +262,10 @@ Checks: `npm run lint`, `npx tsc --noEmit`, `npm test` (Sheet, Drive and merge l
 - `src/lib/client/contacts.ts`, `export.ts`: contact API calls, duplicate matching, CSV/vCard.
 - `public/sw.js`: offline support.
 - `src/lib/client/queue.ts`: queue stored on the phone (IndexedDB).
+- `src/components/ThemeToggle.tsx`, `src/lib/theme.ts`: light / dark / auto colours.
 - `src/lib/llm/`: model adapters (Gemini, Claude, mock) and the shared prompt.
 - `src/lib/fields.ts`: field list, statuses, Sheet columns, validation.
 - `src/lib/server/sheet.ts`, `google.ts`: Google Sheets and Drive.
+- `src/lib/server/session.ts`, `images.ts`: sign-in checks for API routes, reading request bodies and photos.
+- `tests/fake-google.mjs`: the fake Google/Gemini used by `npm test` and `tests/adversarial/`.
 - `src/auth.ts`: Google sign-in and the allowlist.
