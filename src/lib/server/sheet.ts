@@ -64,8 +64,10 @@ type Meta = {
   location?: { sheetId?: number | null; dimensionRange?: { sheetId?: number | null; dimension?: string | null; startIndex?: number | null } | null } | null;
 };
 
-// Makes sure the tab and header row exist. Adds any of our columns that are missing
-// (to the right of what is there), so a hand-made Sheet keeps working.
+type Sheets = ReturnType<typeof sheetsClient>;
+
+// Makes sure the tab and header row exist, and works out where everything is. Adds any of our
+// columns that are missing (to the right of what is there), so a hand-made Sheet keeps working.
 async function ensureSheet(): Promise<SheetInfo> {
   const sheets = sheetsClient();
   const spreadsheetId = requireEnv("SHEET_ID");
@@ -79,29 +81,76 @@ async function ensureSheet(): Promise<SheetInfo> {
   ]).catch(sheetError);
   const found: Meta[] = (search.data.matchedDeveloperMetadata ?? []).map((m) => m.developerMetadata ?? {});
   const setupMeta = found.find((m) => m.metadataKey === SETUP_KEY);
-
-  // The tab: the one the marker is on (so it may be renamed), else the one named SHEET_TAB / "Contacts".
-  // When SHEET_TAB is set, that name decides.
   const tabs = (meta.data.sheets ?? []).map((s) => ({ sheetId: s.properties!.sheetId!, title: s.properties!.title! }));
+
+  const { tab, tabMarked } = await findTab(sheets, spreadsheetId, tabs, found, !!setupMeta);
+  const { sheetId, title } = tab;
+  const { headerRow, existing, headerMarked } = await findHeaderRow(sheets, spreadsheetId, tab, found);
+  const { width, marks, keys, missing } = mapColumns(existing, found, sheetId);
+
+  if (missing.length > 0) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${quoted(title)}!${columnLetter(width)}${headerRow}`,
+      valueInputOption: "RAW",
+      requestBody: { values: [missing] },
+    });
+  }
+  // Formatting and markers go to Google in one request.
+  const requests: object[] = [];
+  if (!tabMarked) {
+    requests.push(marker(TAB_KEY, "1", { sheetId }));
+  }
+  keys.forEach((k, i) => {
+    if (k && marks.get(i) !== k) {
+      requests.push(marker(COLUMN_KEY, k, { dimensionRange: { sheetId, dimension: "COLUMNS", startIndex: i, endIndex: i + 1 } }));
+    }
+  });
+  if (!headerMarked) {
+    requests.push(marker(HEADER_KEY, "1", { dimensionRange: { sheetId, dimension: "ROWS", startIndex: headerRow - 1, endIndex: headerRow } }));
+  }
+  // Formatting is applied when columns are added, and once to Sheets set up by an older version
+  // (marked in the Sheet's hidden developer metadata), so formatting you change later is left alone.
+  if (missing.length > 0 || setupMeta?.metadataValue !== SETUP_VERSION) {
+    requests.push(...formattingRequests(sheetId, headerRow, keys, setupMeta));
+  }
+  if (requests.length > 0) await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests } });
+  return { sheetId, title, headerRow, keys };
+}
+
+// The tab: the one the marker is on (so it may be renamed), else the one named SHEET_TAB / "Contacts".
+// When SHEET_TAB is set, that name decides. Creates the tab in a new spreadsheet.
+async function findTab(
+  sheets: Sheets,
+  spreadsheetId: string,
+  tabs: { sheetId: number; title: string }[],
+  found: Meta[],
+  setUpBefore: boolean,
+): Promise<{ tab: { sheetId: number; title: string }; tabMarked: boolean }> {
   const marked = found.filter((m) => m.metadataKey === TAB_KEY).map((m) => m.location?.sheetId);
   const byMarker = process.env.SHEET_TAB ? [] : tabs.filter((t) => marked.includes(t.sheetId));
-  let tab = byMarker.find((t) => t.title === tabName()) ?? byMarker[0] ?? tabs.find((t) => t.title === tabName());
-  if (!tab) {
-    // Set up before, so the tab was deleted: say so rather than quietly starting an empty one.
-    if (setupMeta)
-      throw new Error(
-        `The "${tabName()}" tab is missing from the Sheet. If it was deleted by mistake, restore it (Edit → Undo, or File → Version history). To start fresh, add an empty tab named "${tabName()}".`,
-      );
-    const res = await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: { requests: [{ addSheet: { properties: { title: tabName(), gridProperties: { frozenRowCount: 1 } } } }] },
-    });
-    tab = { sheetId: res.data.replies![0].addSheet!.properties!.sheetId!, title: tabName() };
-  }
-  const { sheetId, title } = tab;
+  const tab = byMarker.find((t) => t.title === tabName()) ?? byMarker[0] ?? tabs.find((t) => t.title === tabName());
+  if (tab) return { tab, tabMarked: marked.includes(tab.sheetId) };
+  // Set up before, so the tab was deleted: say so rather than quietly starting an empty one.
+  if (setUpBefore)
+    throw new Error(
+      `The "${tabName()}" tab is missing from the Sheet. If it was deleted by mistake, restore it (Edit → Undo, or File → Version history). To start fresh, add an empty tab named "${tabName()}".`,
+    );
+  const res = await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: { requests: [{ addSheet: { properties: { title: tabName(), gridProperties: { frozenRowCount: 1 } } } }] },
+  });
+  return { tab: { sheetId: res.data.replies![0].addSheet!.properties!.sheetId!, title: tabName() }, tabMarked: false };
+}
 
-  // The header row: where the marker says, else the first of the top rows with an "id" header
-  // (a Sheet set up before the marker existed, possibly with a title added above), else row 1.
+// The header row: where the marker says, else the first of the top rows with an "id" header
+// (a Sheet set up before the marker existed, possibly with a title added above), else row 1.
+async function findHeaderRow(
+  sheets: Sheets,
+  spreadsheetId: string,
+  { sheetId, title }: { sheetId: number; title: string },
+  found: Meta[],
+): Promise<{ headerRow: number; existing: string[]; headerMarked: boolean }> {
   const headerMeta = found.find(
     (m) => m.metadataKey === HEADER_KEY && m.location?.dimensionRange?.sheetId === sheetId && m.location.dimensionRange.dimension === "ROWS",
   );
@@ -113,8 +162,12 @@ async function ensureSheet(): Promise<SheetInfo> {
   const idRow = topRows.findIndex((r) => r.some((h) => headerKey(h) === "id"));
   const headerRow = markedRow ?? (idRow >= 0 ? idRow + 1 : 1);
   const existing = markedRow ? (topRows[0] ?? []) : (topRows[headerRow - 1] ?? []);
-  // Which of our columns each column is: its marker first, else its header text. If two columns
-  // claim the same one (say headers "Email" and "email"), only the first is used.
+  return { headerRow, existing, headerMarked: !!headerMeta };
+}
+
+// Which of our columns each column is: its marker first, else its header text. If two columns
+// claim the same one (say headers "Email" and "email"), only the first is used.
+function mapColumns(existing: string[], found: Meta[], sheetId: number) {
   const marks = new Map<number, SheetColumn>();
   for (const m of found) {
     const d = m.location?.dimensionRange;
@@ -129,94 +182,64 @@ async function ensureSheet(): Promise<SheetInfo> {
   });
   const missing = SHEET_COLUMNS.filter((c) => !existingKeys.includes(c));
   const keys: (SheetColumn | null)[] = [...existingKeys, ...missing];
+  return { width, marks, keys, missing };
+}
 
-  if (missing.length > 0) {
-    await sheets.spreadsheets.values.update({
-      spreadsheetId,
-      range: `${quoted(title)}!${columnLetter(width)}${headerRow}`,
-      valueInputOption: "RAW",
-      requestBody: { values: [missing] },
-    });
-  }
-  // Formatting and markers go to Google in one request.
-  const requests: object[] = [];
-  if (!marked.includes(sheetId)) {
-    requests.push(marker(TAB_KEY, "1", { sheetId }));
-  }
-  keys.forEach((k, i) => {
-    if (k && marks.get(i) !== k) {
-      requests.push(marker(COLUMN_KEY, k, { dimensionRange: { sheetId, dimension: "COLUMNS", startIndex: i, endIndex: i + 1 } }));
-    }
+// Dropdown for the status column; dates shown (and read back) as yyyy-mm-dd even when typed
+// by hand in Sheets, so the app's date fields and sorting keep working; bold header.
+function formattingRequests(sheetId: number, headerRow: number, keys: (SheetColumn | null)[], setupMeta: Meta | undefined): object[] {
+  const statusCol = keys.indexOf("status");
+  const nextActionCol = keys.indexOf("next_action");
+  const dateFormats = (["date_met", "next_action_date"] as const).map((c) => {
+    const col = keys.indexOf(c);
+    return {
+      repeatCell: {
+        range: { sheetId, startRowIndex: headerRow, startColumnIndex: col, endColumnIndex: col + 1 },
+        cell: { userEnteredFormat: { numberFormat: { type: "DATE", pattern: "yyyy-mm-dd" } } },
+        fields: "userEnteredFormat.numberFormat",
+      },
+    };
   });
-  if (!headerMeta) {
-    requests.push(marker(HEADER_KEY, "1", { dimensionRange: { sheetId, dimension: "ROWS", startIndex: headerRow - 1, endIndex: headerRow } }));
-  }
-  // Formatting is applied when columns are added, and once to Sheets set up by an older version
-  // (marked in the Sheet's hidden developer metadata), so formatting you change later is left alone.
-  const format = missing.length > 0 || setupMeta?.metadataValue !== SETUP_VERSION;
-  if (format) {
-    // Dropdown for the status column; dates shown (and read back) as yyyy-mm-dd even when typed
-    // by hand in Sheets, so the app's date fields and sorting keep working; bold header.
-    const statusCol = keys.indexOf("status");
-    const nextActionCol = keys.indexOf("next_action");
-    const dateFormats = (["date_met", "next_action_date"] as const).map((c) => {
-      const col = keys.indexOf(c);
-      return {
-        repeatCell: {
-          range: { sheetId, startRowIndex: headerRow, startColumnIndex: col, endColumnIndex: col + 1 },
-          cell: { userEnteredFormat: { numberFormat: { type: "DATE", pattern: "yyyy-mm-dd" } } },
-          fields: "userEnteredFormat.numberFormat",
-        },
-      };
-    });
-    requests.push(
-      ...dateFormats,
-      {
-        repeatCell: {
-          range: { sheetId, startRowIndex: headerRow - 1, endRowIndex: headerRow },
-          cell: { userEnteredFormat: { textFormat: { bold: true } } },
-          fields: "userEnteredFormat.textFormat.bold",
+  return [
+    ...dateFormats,
+    {
+      repeatCell: {
+        range: { sheetId, startRowIndex: headerRow - 1, endRowIndex: headerRow },
+        cell: { userEnteredFormat: { textFormat: { bold: true } } },
+        fields: "userEnteredFormat.textFormat.bold",
+      },
+    },
+    {
+      setDataValidation: {
+        range: { sheetId, startRowIndex: headerRow, startColumnIndex: statusCol, endColumnIndex: statusCol + 1 },
+        rule: {
+          condition: { type: "ONE_OF_LIST", values: STATUSES.map((v) => ({ userEnteredValue: v })) },
+          strict: false,
+          showCustomUi: true,
         },
       },
-      {
-        setDataValidation: {
-          range: { sheetId, startRowIndex: headerRow, startColumnIndex: statusCol, endColumnIndex: statusCol + 1 },
-          rule: {
-            condition: { type: "ONE_OF_LIST", values: STATUSES.map((v) => ({ userEnteredValue: v })) },
-            strict: false,
-            showCustomUi: true,
+    },
+    setupMeta?.metadataId != null
+      ? {
+          updateDeveloperMetadata: {
+            dataFilters: [{ developerMetadataLookup: { metadataId: setupMeta.metadataId } }],
+            developerMetadata: { metadataValue: SETUP_VERSION },
+            fields: "metadataValue",
           },
+        }
+      : marker(SETUP_KEY, SETUP_VERSION, { spreadsheet: true }),
+    // Next action: same choices as the app; anything else may still be typed.
+    {
+      setDataValidation: {
+        range: { sheetId, startRowIndex: headerRow, startColumnIndex: nextActionCol, endColumnIndex: nextActionCol + 1 },
+        rule: {
+          condition: { type: "ONE_OF_LIST", values: NEXT_ACTIONS.map((v) => ({ userEnteredValue: v })) },
+          strict: false,
+          showCustomUi: true,
         },
       },
-      setupMeta?.metadataId != null
-        ? {
-            updateDeveloperMetadata: {
-              dataFilters: [{ developerMetadataLookup: { metadataId: setupMeta.metadataId } }],
-              developerMetadata: { metadataValue: SETUP_VERSION },
-              fields: "metadataValue",
-            },
-          }
-        : marker(SETUP_KEY, SETUP_VERSION, { spreadsheet: true }),
-      // Next action: same choices as the app; anything else may still be typed.
-      {
-        setDataValidation: {
-          range: {
-            sheetId,
-            startRowIndex: headerRow,
-            startColumnIndex: nextActionCol,
-            endColumnIndex: nextActionCol + 1,
-          },
-          rule: {
-            condition: { type: "ONE_OF_LIST", values: NEXT_ACTIONS.map((v) => ({ userEnteredValue: v })) },
-            strict: false,
-            showCustomUi: true,
-          },
-        },
-      },
-    );
-  }
-  if (requests.length > 0) await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests } });
-  return { sheetId, title, headerRow, keys };
+    },
+  ];
 }
 
 function toRow(keys: (SheetColumn | null)[], values: string[]): ContactRow {
