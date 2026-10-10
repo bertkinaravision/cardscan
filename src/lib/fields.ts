@@ -117,6 +117,13 @@ export const contactInputSchema = z.object({
 });
 export type ContactInput = z.infer<typeof contactInputSchema>;
 
+// Every field empty (status "To contact"). A save starts from this, so a draft kept on the phone
+// by an older version, without fields added since (such as salutation), can still be saved.
+export function blankContactInput(): ContactInput {
+  const keys = Object.keys(contactInputSchema.shape) as (keyof ContactInput)[];
+  return { ...(Object.fromEntries(keys.map((k) => [k, ""])) as Omit<ContactInput, "status">), status: "To contact" };
+}
+
 // A short message naming the first field that failed validation (shown to the person).
 export function invalidFieldMessage(error: z.ZodError): string {
   const issue = error.issues[0];

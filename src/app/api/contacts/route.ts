@@ -1,4 +1,4 @@
-import { contactInputSchema, invalidFieldMessage, type ContactInput, type ContactRow } from "@/lib/fields";
+import { blankContactInput, contactInputSchema, invalidFieldMessage, type ContactInput, type ContactRow } from "@/lib/fields";
 import { deleteImages, uploadImage } from "@/lib/server/google";
 import { readImage } from "@/lib/server/images";
 import { mergeContact, type Uploaded } from "@/lib/server/merge";
@@ -25,7 +25,7 @@ export async function POST(req: Request) {
     const form = await req.formData();
     const id = String(form.get("id") ?? "");
     if (!/^[a-zA-Z0-9-]{8,64}$/.test(id)) throw new HttpError(400, "Invalid id.");
-    const parsed = contactInputSchema.safeParse(JSON.parse(String(form.get("contact") ?? "{}")));
+    const parsed = contactInputSchema.safeParse({ ...blankContactInput(), ...JSON.parse(String(form.get("contact") ?? "{}")) });
     if (!parsed.success) throw new HttpError(400, invalidFieldMessage(parsed.error));
     const { first_name, last_name, company, email, mobile } = parsed.data;
     if (![first_name, last_name, company, email, mobile].some(Boolean))
