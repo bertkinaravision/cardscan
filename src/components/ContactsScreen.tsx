@@ -61,6 +61,7 @@ export function ContactsScreen() {
           [
             c.first_name,
             c.last_name,
+            c.name_original,
             c.company,
             c.job_title,
             c.email,
@@ -329,6 +330,7 @@ function ContactDetails({
     <div className="flex flex-col gap-3 border-t border-stone-100 p-3 text-sm">
       {!editing && (
         <dl className="grid grid-cols-[7rem_1fr] gap-x-2 gap-y-1">
+          {c.name_original && <Row label="Original name" value={c.name_original} />}
           {c.email && <Row label="Email" value={<a className="text-brand underline" href={`mailto:${c.email}`}>{c.email}</a>} />}
           {c.mobile && <Row label="Mobile" value={<a className="text-brand underline" href={`tel:${tel(c.mobile)}`}>{c.mobile}</a>} />}
           {c.website && <Row label="Website" value={<a className="text-brand underline" href={href(c.website)} target="_blank" rel="noreferrer">{c.website}</a>} />}
