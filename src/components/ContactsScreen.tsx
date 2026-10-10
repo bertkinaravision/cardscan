@@ -344,6 +344,9 @@ function ContactDetails({
           {c.mobile && <Row label="Mobile" value={<a className="text-brand underline" href={`tel:${tel(c.mobile)}`}>{c.mobile}</a>} />}
           {c.website && <Row label="Website" value={<a className="text-brand underline" href={href(c.website)} target="_blank" rel="noreferrer">{c.website}</a>} />}
           {c.linkedin && <Row label="LinkedIn" value={<a className="text-brand underline" href={href(c.linkedin)} target="_blank" rel="noreferrer">{c.linkedin}</a>} />}
+          {!c.linkedin && c.linkedin_search && (
+            <Row label="LinkedIn" value={<a className="text-brand underline" href={href(c.linkedin_search)} target="_blank" rel="noreferrer">Search on LinkedIn</a>} />
+          )}
           {c.address && <Row label="Address" value={c.address} />}
           {c.other && <Row label="Other" value={c.other} />}
           <Row label="Scanned" value={`${c.scanned_by} · ${c.scanned_at.slice(0, 10)}`} />

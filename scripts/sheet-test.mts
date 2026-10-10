@@ -282,3 +282,22 @@ assert.equal(ownerFor("bert wouters"), "Bert", "signed-in person preselected");
 assert.equal(ownerFor("Someone Else"), "", "nobody preselected when not in OWNERS");
 delete process.env.OWNERS;
 console.log("Owner list tests passed.");
+
+// 20. LinkedIn search link: added when there is no LinkedIn URL, follows name/company edits,
+//     cleared when a URL is added, and filled in for older rows when the Sheet is read.
+const { linkedinSearchUrl } = await import("../src/lib/fields");
+await appendContact(row("li1", { first_name: "Mei", last_name: "Tan", company: "Acme", linkedin_search: linkedinSearchUrl({ first_name: "Mei", last_name: "Tan", company: "Acme", linkedin: "" }) }));
+let li = (await listContacts()).find((c) => c.id === "li1")!;
+assert.equal(li.linkedin_search, "https://www.linkedin.com/search/results/people/?keywords=Mei%20Tan%20Acme");
+await updateContact("li1", { company: "Beta & Co" });
+li = (await listContacts()).find((c) => c.id === "li1")!;
+assert.match(li.linkedin_search, /keywords=Mei%20Tan%20Beta%20%26%20Co$/, "follows a company edit");
+await updateContact("li1", { linkedin: "linkedin.com/in/meitan" });
+li = (await listContacts()).find((c) => c.id === "li1")!;
+assert.equal(li.linkedin_search, "", "cleared once a real LinkedIn URL is known");
+await appendContact(row("li2", { first_name: "Old", last_name: "Row" })); // saved before this column existed
+const tab20 = ops.tab("Contacts");
+const searchCol20 = tab20.rows.find((r: string[]) => r.includes("linkedin_search"))!.indexOf("linkedin_search");
+assert.match((await listContacts()).find((c) => c.id === "li2")!.linkedin_search, /keywords=Old%20Row$/);
+assert.match(tab20.rows.find((r: string[]) => r.includes("li2"))![searchCol20], /keywords=Old%20Row$/, "written to the Sheet");
+console.log("LinkedIn search link tests passed.");

@@ -1,5 +1,5 @@
 import "server-only";
-import { CONTACT_TYPES, FIELD_LABELS, NEXT_ACTIONS, RENAMED_STATUSES, SHEET_COLUMNS, STATUSES, type ContactRow, type SheetColumn } from "@/lib/fields";
+import { CONTACT_TYPES, FIELD_LABELS, linkedinSearchUrl, NEXT_ACTIONS, RENAMED_STATUSES, SHEET_COLUMNS, STATUSES, type ContactRow, type SheetColumn } from "@/lib/fields";
 import { owners, requireEnv } from "./env";
 import { explainGoogleError, sheetsClient } from "./google";
 
@@ -273,27 +273,34 @@ async function readAll(): Promise<{ info: SheetInfo; rows: { rowNumber: number; 
     })
     .catch(sheetError);
   const rows = (res.data.values ?? []).map((v, i) => ({ rowNumber: i + info.headerRow + 1, values: v.map(String) }));
-  await renameOldStatuses(info, rows);
+  await tidyRows(info, rows);
   const filled = rows.filter((r) => r.values.some(Boolean));
   return { info: { ...info, lastRow: filled.at(-1)?.rowNumber ?? info.headerRow }, rows };
 }
 
-// Rows still holding an earlier status label get the current one, in the Sheet and in `rows`.
-// A failure here is only logged: the labels are shown converted anyway and fixed on the next read.
-async function renameOldStatuses(info: SheetInfo, rows: { rowNumber: number; values: string[] }[]) {
-  const col = info.keys.indexOf("status");
-  const stale = rows.filter((r) => RENAMED_STATUSES[r.values[col]]);
-  if (stale.length === 0) return;
-  for (const r of stale) r.values[col] = RENAMED_STATUSES[r.values[col]];
+// Brings rows up to date, in the Sheet and in `rows`: an earlier status label becomes the current
+// one, and a contact without a LinkedIn URL gets its LinkedIn search link. A failure here is only
+// logged; it is tried again on the next read.
+async function tidyRows(info: SheetInfo, rows: { rowNumber: number; values: string[] }[]) {
+  const statusCol = info.keys.indexOf("status");
+  const searchCol = info.keys.indexOf("linkedin_search");
+  const cells: { range: string; values: string[][] }[] = [];
+  const set = (r: { rowNumber: number; values: string[] }, col: number, value: string) => {
+    while (r.values.length <= col) r.values.push("");
+    r.values[col] = value;
+    cells.push({ range: `${quoted(info.title)}!${columnLetter(col)}${r.rowNumber}`, values: [[value]] });
+  };
+  for (const r of rows) {
+    const row = toRow(info.keys, r.values);
+    if (!row.id) continue;
+    if (RENAMED_STATUSES[row.status]) set(r, statusCol, RENAMED_STATUSES[row.status]);
+    const search = linkedinSearchUrl(row);
+    if (searchCol >= 0 && search && !row.linkedin_search) set(r, searchCol, search);
+  }
+  if (cells.length === 0) return;
   await sheetsClient()
-    .spreadsheets.values.batchUpdate({
-      spreadsheetId: requireEnv("SHEET_ID"),
-      requestBody: {
-        valueInputOption: "RAW",
-        data: stale.map((r) => ({ range: `${quoted(info.title)}!${columnLetter(col)}${r.rowNumber}`, values: [[r.values[col]]] })),
-      },
-    })
-    .catch((err) => console.error("[sheet] could not update old status labels:", err instanceof Error ? err.message : err));
+    .spreadsheets.values.batchUpdate({ spreadsheetId: requireEnv("SHEET_ID"), requestBody: { valueInputOption: "RAW", data: cells } })
+    .catch((err) => console.error("[sheet] could not tidy rows:", err instanceof Error ? err.message : err));
 }
 
 export async function listContacts(): Promise<ContactRow[]> {
@@ -365,6 +372,10 @@ export async function updateContact(id: string, patch: Partial<ContactRow>): Pro
   const { info, found } = loc;
   const changes: Partial<ContactRow> = { ...patch, last_updated: new Date().toISOString() };
   delete changes.id;
+  // Name, company or LinkedIn changed: the LinkedIn search link follows.
+  if (["first_name", "last_name", "company", "linkedin"].some((f) => f in patch)) {
+    changes.linkedin_search = linkedinSearchUrl({ ...toRow(info.keys, found.values), ...changes });
+  }
   const data = Object.entries(changes)
     .filter(([col]) => info.keys.includes(col as SheetColumn))
     .map(([col, value]) => ({

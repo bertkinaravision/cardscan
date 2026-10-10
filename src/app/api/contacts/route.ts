@@ -1,4 +1,4 @@
-import { blankContactInput, contactInputSchema, invalidFieldMessage, type ContactInput, type ContactRow } from "@/lib/fields";
+import { blankContactInput, contactInputSchema, invalidFieldMessage, linkedinSearchUrl, type ContactInput, type ContactRow } from "@/lib/fields";
 import { deleteImages, uploadImage } from "@/lib/server/google";
 import { readImage } from "@/lib/server/images";
 import { mergeContact, type Uploaded } from "@/lib/server/merge";
@@ -102,6 +102,7 @@ function newRow(id: string, c: ContactInput, email: string, now: string, uploade
     image_front_link: uploaded.front?.link ?? "",
     image_back_link: uploaded.back?.link ?? "",
     image_file_ids: [uploaded.front?.id, uploaded.back?.id].filter(Boolean).join(","),
+    linkedin_search: linkedinSearchUrl(c),
     source_card_ids: "",
   };
 }

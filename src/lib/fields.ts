@@ -38,6 +38,7 @@ export const FIELD_LABELS: Record<string, string> = {
   owner: "Owner",
   next_action: "Next action",
   next_action_date: "Next action date",
+  linkedin_search: "LinkedIn search",
 };
 
 export const STATUSES = [
@@ -88,6 +89,8 @@ export const SHEET_COLUMNS = [
   ...EXTRACTED_FIELDS,
   ...CONTEXT_FIELDS,
   ...CRM_FIELDS,
+  // A LinkedIn people search for the name and company, when the card has no LinkedIn URL.
+  "linkedin_search",
   "scanned_by",
   "scanned_at",
   "last_updated",
@@ -162,4 +165,12 @@ export function emptyExtraction(): Extraction {
     contact_type: "",
     low_confidence: [],
   };
+}
+
+// A LinkedIn people-search link for someone without a LinkedIn URL on their card ("" otherwise).
+// Only a link: opening it searches LinkedIn as the person who clicks it.
+export function linkedinSearchUrl(c: Pick<ContactRow, "first_name" | "last_name" | "company" | "linkedin">): string {
+  const words = [c.first_name, c.last_name, c.company].map((w) => w.trim()).filter(Boolean).join(" ");
+  if (c.linkedin.trim() || !(c.first_name.trim() || c.last_name.trim())) return "";
+  return `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(words)}`;
 }
