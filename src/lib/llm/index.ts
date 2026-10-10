@@ -32,8 +32,9 @@ function extractor(): VisionExtractor {
   }
 }
 
-// Chinese, Japanese or Korean characters.
-const CJK = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff]/;
+// A letter in any script other than Latin (Chinese, Japanese, Korean, Thai, Arabic, Cyrillic, ...).
+// Latin letters with accents, as in Vietnamese, count as Latin.
+const NON_LATIN = /(?=\p{L})\P{Script=Latin}/u;
 
 async function extractOnce(images: CardImage[]): Promise<Extraction> {
   const raw = await extractor().extract(images);
@@ -51,17 +52,17 @@ async function extractOnce(images: CardImage[]): Promise<Extraction> {
 export async function extractCard(images: CardImage[]): Promise<Extraction> {
   const started = Date.now();
   let data = await extractOnce(images);
-  // Names must be in Latin letters. The model now and then copies a Chinese/Japanese name
+  // Names must be in Latin letters. The model now and then copies a name in another script
   // as-is; asking once more usually fixes it. If not, keep it but flag it for review.
   // (Only when there is time left: the request may run at most 60 seconds.)
-  if (CJK.test(data.first_name + data.last_name) && Date.now() - started < 20_000) {
+  if (NON_LATIN.test(data.first_name + data.last_name) && Date.now() - started < 20_000) {
     const again = await extractOnce(images).catch((err) => {
       console.warn("[extract] second attempt failed:", err instanceof Error ? err.message : err);
       return null;
     });
-    if (again && !CJK.test(again.first_name + again.last_name)) data = again;
+    if (again && !NON_LATIN.test(again.first_name + again.last_name)) data = again;
     else data.low_confidence = [...new Set([...data.low_confidence, "first_name" as const, "last_name" as const])];
-  } else if (CJK.test(data.first_name + data.last_name)) {
+  } else if (NON_LATIN.test(data.first_name + data.last_name)) {
     data.low_confidence = [...new Set([...data.low_confidence, "first_name" as const, "last_name" as const])];
   }
   return data;

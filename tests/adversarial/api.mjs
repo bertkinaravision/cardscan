@@ -129,6 +129,14 @@ test("LLM-8", "Chinese name returned twice", async () => {
   const flagged = r.body?.extraction?.low_confidence?.includes("first_name");
   record("LLM-8", "Name stays in Chinese characters after re-ask", "name flagged 'Check'", `${r.status} flagged=${flagged}`, r.status === 200 && flagged);
 });
+test("LLM-8b", "Thai name returned in Thai script twice", async () => {
+  const card = JSON.stringify({ salutation: "", first_name: "สมชาย", last_name: "ใจดี", job_title: "", company: "", email: "", mobile: "", website: "", address: "", linkedin: "", other: "", low_confidence: [] });
+  await fake.set({ faults: { gemini: [{ text: card }, { text: card }] } });
+  const r = await extract(await cookie(), { front: jpeg() });
+  const calls = (await fake.state()).log.filter((l) => l.startsWith("gemini")).length;
+  const flagged = r.body?.extraction?.low_confidence?.includes("first_name");
+  record("LLM-8b", "Name stays in Thai script after re-ask", "asked again, then flagged 'Check'", `${r.status} model calls=${calls} flagged=${flagged}`, r.status === 200 && calls === 2 && flagged);
+});
 test("LLM-9", "Model answers 404 for the main model (retired)", async () => {
   await fake.set({ faults: { gemini: [{ status: 404, message: "models/x is not found" }] } });
   const r = await extract(await cookie(), { front: jpeg() });
