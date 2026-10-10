@@ -34,6 +34,7 @@ export const FIELD_LABELS: Record<string, string> = {
   date_met: "Date met",
   notes: "Notes",
   status: "Status",
+  contact_type: "Contact type",
   owner: "Owner",
   next_action: "Next action",
   next_action_date: "Next action date",
@@ -50,6 +51,19 @@ export type Status = (typeof STATUSES)[number];
 // Labels used before October 2026; rows still holding them are rewritten when the Sheet is read.
 export const RENAMED_STATUSES: Record<string, Status> = { "To contact": "New", "In conversation": "In discussion" };
 
+// Kinds of contact; the model suggests one, the person confirms it on the review screen.
+export const CONTACT_TYPES = [
+  "Clinician",
+  "Distributor",
+  "Investor",
+  "Regulator",
+  "Partner",
+  "Vendor",
+  "Advisor",
+  "Other",
+] as const;
+export type ContactType = (typeof CONTACT_TYPES)[number];
+
 // Choices in the "Next action" dropdown. Anything else can be typed via "Other…".
 export const NEXT_ACTIONS = [
   "Send email",
@@ -65,7 +79,7 @@ export const NEXT_ACTIONS = [
 
 // Fields a person fills in or edits (on top of the extracted ones).
 export const CONTEXT_FIELDS = ["event", "date_met", "notes"] as const;
-export const CRM_FIELDS = ["status", "owner", "next_action", "next_action_date"] as const;
+export const CRM_FIELDS = ["status", "contact_type", "owner", "next_action", "next_action_date"] as const;
 
 // Sheet columns, left to right. The app maps by header name, so adding extra
 // columns to the right in the Sheet is safe.
@@ -101,10 +115,12 @@ const extractedShape = {
   other: z.string(),
 } satisfies Record<ExtractedField, z.ZodString>;
 
-// What the model must return. Every field is a string ("" when absent).
+// What the model must return. Every field is a string ("" when absent); contact_type is the model's
+// suggestion ("" when it can't tell).
 export const extractionSchema = z.object({
   ...extractedShape,
-  low_confidence: z.array(z.enum(EXTRACTED_FIELDS)),
+  contact_type: z.enum(["", ...CONTACT_TYPES]),
+  low_confidence: z.array(z.enum([...EXTRACTED_FIELDS, "contact_type"])),
 });
 export type Extraction = z.infer<typeof extractionSchema>;
 
@@ -116,6 +132,7 @@ export const contactInputSchema = z.object({
   date_met: text,
   notes: z.string().trim().max(5000),
   status: z.enum(STATUSES),
+  contact_type: z.enum(["", ...CONTACT_TYPES]),
   owner: text,
   next_action: text,
   next_action_date: text,
@@ -126,7 +143,7 @@ export type ContactInput = z.infer<typeof contactInputSchema>;
 // by an older version, without fields added since (such as salutation), can still be saved.
 export function blankContactInput(): ContactInput {
   const keys = Object.keys(contactInputSchema.shape) as (keyof ContactInput)[];
-  return { ...(Object.fromEntries(keys.map((k) => [k, ""])) as Omit<ContactInput, "status">), status: "New" };
+  return { ...(Object.fromEntries(keys.map((k) => [k, ""])) as Omit<ContactInput, "status" | "contact_type">), status: "New", contact_type: "" };
 }
 
 // A short message naming the first field that failed validation (shown to the person).
@@ -142,6 +159,7 @@ export function invalidFieldMessage(error: z.ZodError): string {
 export function emptyExtraction(): Extraction {
   return {
     ...(Object.fromEntries(EXTRACTED_FIELDS.map((f) => [f, ""])) as Record<ExtractedField, string>),
+    contact_type: "",
     low_confidence: [],
   };
 }

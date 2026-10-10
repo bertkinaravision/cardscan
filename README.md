@@ -160,13 +160,14 @@ The queue is stored on the phone, so you can keep scanning with bad signal. Card
 
 One row per approved contact, in this column order:
 
-`id, salutation, first_name, last_name, name_original, job_title, company, email, mobile, website, address, linkedin, other, event, date_met, notes, status, owner, next_action, next_action_date, scanned_by, scanned_at, last_updated, image_front_link, image_back_link, image_file_ids, source_card_ids`
+`id, salutation, first_name, last_name, name_original, job_title, company, email, mobile, website, address, linkedin, other, event, date_met, notes, status, contact_type, owner, next_action, next_action_date, scanned_by, scanned_at, last_updated, image_front_link, image_back_link, image_file_ids, source_card_ids`
 
 - `salutation` holds titles such as Dr., Prof., Mr., Ms.; letters after a name (PhD, MBA) go to `other`.
 - `mobile` is the mobile number (or the main number if there is no mobile). Office, direct line and fax numbers go to `other`.
 - `name_original` holds the name as printed in its own script (for example 林美玲); `first_name` and `last_name` are always in Latin letters.
 
 - `status` has a dropdown: New, Contacted, In discussion, Closed, Not relevant. (Rows with the earlier labels "To contact" and "In conversation" are switched to "New" and "In discussion" automatically.)
+- `contact_type` has a dropdown: Clinician, Distributor, Investor, Regulator, Partner, Vendor, Advisor, Other. The AI suggests one from the job title and company; it is marked **Check** on the review screen when unsure. Change the list in `CONTACT_TYPES` in `src/lib/fields.ts`.
 - `next_action` has a dropdown too (Send email, Send brochure / deck, Call, Schedule meeting, Arrange demo, Send proposal / quote, Connect on LinkedIn, Introduce to colleague, Follow up later); anything else can still be typed. Change the list in `NEXT_ACTIONS` in `src/lib/fields.ts`.
 - `id` and `image_file_ids` are used by the app to find, edit and delete rows. Don't change them.
 - Make it look nice: colours, column widths, bold, freezing, hiding columns (`id`, `image_file_ids` and `source_card_ids` are only for the app), sorting and filtering are all fine.

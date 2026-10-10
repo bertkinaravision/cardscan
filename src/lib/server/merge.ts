@@ -17,6 +17,7 @@ export function mergeContact(old: ContactRow, card: ContactInput, uploaded: Uplo
     .join(" ");
   merged.notes = addUnique(old.notes, newNote, "\n");
   merged.owner = old.owner || card.owner;
+  merged.contact_type = old.contact_type || card.contact_type;
   merged.next_action = old.next_action || card.next_action;
   merged.next_action_date = old.next_action_date || card.next_action_date;
 

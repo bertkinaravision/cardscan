@@ -265,6 +265,29 @@ test("UI-15", "Model keeps answering 500", async () => {
   await ctx.close();
 });
 
+test("UI-16", "Contact type suggested, confirmed and saved", async () => {
+  const card = { salutation: "", first_name: "Daniel", last_name: "Cheong", name_original: "", job_title: "Partner", company: "Lion Rock Ventures", email: "daniel@lionrock.example", mobile: "", website: "", address: "", linkedin: "", other: "", contact_type: "Investor", low_confidence: ["contact_type"] };
+  await fake.set({ faults: { gemini: [{ text: JSON.stringify(card) }] } });
+  const { ctx, page } = await open();
+  await addCard(page);
+  await openReview(page);
+  const select = page.getByRole("combobox", { name: /Contact type/ });
+  const prefilled = await select.inputValue();
+  const check = await page.locator("label", { has: select }).getByText("Check").count();
+  await page.getByRole("button", { name: /Approve & save/ }).click();
+  await page.waitForURL(`${BASE}/`, { timeout: 15000 });
+  const saved = (await listContacts(await cookie())).body.contacts.find((x) => x.first_name === "Daniel");
+  await page.goto(`${BASE}/contacts`);
+  await page.getByRole("combobox", { name: "Contact type" }).selectOption("Vendor");
+  const hiddenWhenVendor = await page.getByText("Daniel Cheong").count();
+  await page.getByRole("combobox", { name: "Contact type" }).selectOption("Investor");
+  const shownWhenInvestor = await page.getByText("Daniel Cheong").count();
+  record("UI-16", "Contact type from the model", "prefilled + 'Check', saved, filterable",
+    `prefilled "${prefilled}", Check shown: ${check > 0}; saved "${saved?.contact_type}"; filter Vendor shows ${hiddenWhenVendor}, Investor shows ${shownWhenInvestor}`,
+    prefilled === "Investor" && check > 0 && saved?.contact_type === "Investor" && hiddenWhenVendor === 0 && shownWhenInvestor > 0);
+  await ctx.close();
+});
+
 for (const t of tests) {
   if (only && t.id !== only) continue;
   await fake.reset();

@@ -33,7 +33,7 @@ await appendContact(row("a1", { first_name: "Rachel", last_name: "Lim", notes: '
 const contacts = fake.state.tabs.find((t: { title: string }) => t.title === "Contacts") as { rows: string[][] };
 assert.ok(contacts, "Contacts tab created");
 assert.deepEqual(contacts.rows[0], [...SHEET_COLUMNS], "header row written");
-assert.equal(fake.state.validations, 2, "status and next action dropdowns added");
+assert.equal(fake.state.validations, 3, "status, next action and contact type dropdowns added");
 assert.equal(contacts.rows[1][SHEET_COLUMNS.indexOf("notes")], '=HYPERLINK("x")', "text kept as-is (RAW)");
 
 // 2. A person adds a column and reorders; the app still maps by header name.
@@ -48,7 +48,7 @@ assert.equal(list[0].first_name, "Rachel");
 assert.equal(list[0].last_name, "Lim");
 assert.equal(list[1].first_name, "Kenji");
 assert.equal(contacts.rows[2][header.indexOf("first_name")], "Kenji", "written into the reordered column");
-assert.equal(fake.state.validations, 2, "no extra dropdowns when header is complete");
+assert.equal(fake.state.validations, 3, "no extra dropdowns when header is complete");
 
 // 3. Update keeps unrelated cells, including the person's own column and hand edits made meanwhile.
 contacts.rows[1][header.indexOf("notes")] = "typed in the Sheet";
@@ -171,9 +171,9 @@ console.log("Readable header tests passed.");
 ops.clearSpreadsheetMeta();
 const before = fake.state.validations;
 await listContacts();
-assert.equal(fake.state.validations, before + 2, "dropdowns applied to an older Sheet");
+assert.equal(fake.state.validations, before + 3, "dropdowns applied to an older Sheet");
 await listContacts();
-assert.equal(fake.state.validations, before + 2, "and only once");
+assert.equal(fake.state.validations, before + 3, "and only once");
 assert.ok(ops.setupMarker(), "setup marker written");
 
 // 13. Two headers for the same column: the first one is used for reading and writing.

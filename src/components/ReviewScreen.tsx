@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BlobImage } from "@/components/BlobImage";
 import { NextActionPicker } from "@/components/NextActionPicker";
 import {
+  CONTACT_TYPES,
   EXTRACTED_FIELDS,
   FIELD_LABELS,
   STATUSES,
@@ -35,6 +36,7 @@ function initialDraft(card: QueuedCard, defaultOwner: string): ContactInput {
     date_met: card.dateMet,
     notes: "",
     status: "New",
+    contact_type: e.contact_type ?? "",
     owner: defaultOwner,
     next_action: "",
     next_action_date: "",
@@ -256,6 +258,13 @@ export function ReviewScreen({ id, defaultOwner }: { id: string; defaultOwner: s
             ))}
           </select>
         </label>
+        <Field
+          name="contact_type"
+          value={draft.contact_type}
+          onChange={setField}
+          options={CONTACT_TYPES}
+          flagged={lowConfidence.has("contact_type") && draft.contact_type === (card.extraction?.contact_type ?? "")}
+        />
         <Field name="owner" value={draft.owner} onChange={setField} list="cardscan-owners" />
         <label className="flex flex-col gap-1 text-sm text-stone-600">
           {FIELD_LABELS.next_action}
@@ -302,6 +311,7 @@ function Field({
   flagged = false,
   type = "text",
   list,
+  options,
 }: {
   name: keyof ContactInput;
   value: string;
@@ -309,6 +319,8 @@ function Field({
   flagged?: boolean;
   type?: "text" | "date";
   list?: string;
+  // Shown as a dropdown with these choices (plus an empty one).
+  options?: readonly string[];
 }) {
   const cls = `rounded-lg border px-3 py-2 text-ink ${flagged ? "border-amber-400 bg-amber-50" : "border-stone-300 bg-white"}`;
   return (
@@ -317,7 +329,14 @@ function Field({
         {FIELD_LABELS[name]}
         {flagged && <span className="rounded bg-amber-400 px-1.5 text-sm font-semibold text-warn-ink">Check</span>}
       </span>
-      {MULTILINE.has(name) ? (
+      {options ? (
+        <select value={value} onChange={(e) => onChange(name, e.target.value)} className={cls}>
+          <option value="">—</option>
+          {options.map((o) => (
+            <option key={o}>{o}</option>
+          ))}
+        </select>
+      ) : MULTILINE.has(name) ? (
         <textarea value={value} rows={2} onChange={(e) => onChange(name, e.target.value)} className={cls} />
       ) : (
         <input

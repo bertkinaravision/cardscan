@@ -1,8 +1,8 @@
-import { EXTRACTED_FIELDS } from "@/lib/fields";
+import { CONTACT_TYPES, EXTRACTED_FIELDS } from "@/lib/fields";
 
 export const EXTRACTION_PROMPT = `You read business cards. You get a photo of the front of one card, and sometimes a photo of the back. Both sides belong to the same person.
 
-Return one JSON object with exactly these string fields: ${EXTRACTED_FIELDS.join(", ")}, plus "low_confidence".
+Return one JSON object with exactly these string fields: ${EXTRACTED_FIELDS.join(", ")}, "contact_type", plus "low_confidence".
 
 Rules:
 - Copy text as printed. Never invent or guess values that are not on the card. Use "" for anything that is absent.
@@ -17,4 +17,5 @@ Rules:
 - website: domain or URL as printed. linkedin: a LinkedIn URL or handle if printed.
 - address: one line, comma-separated.
 - other: anything else useful (fax, WeChat, LINE, second email, department, certifications), as "Label: value; Label: value".
+- contact_type: your best guess at what kind of contact this is for a medical technology company, from the job title, company and department: exactly one of ${CONTACT_TYPES.join(", ")}. Clinician: doctors, surgeons, nurses, therapists and other clinical staff. Distributor: companies that sell or distribute medical products to hospitals and clinics. Investor: venture capital, private equity, angel investors, funds, investment banks. Regulator: government health authorities, ministries and agencies (such as HSA, MOH, FDA, PMDA). Partner: hospitals, universities, research institutes and companies to collaborate with. Vendor: suppliers and service providers (manufacturing, components, software, agencies). Advisor: consultants, lawyers, accountants and advisors. Other: anything else. Put "contact_type" in low_confidence unless the card makes it clear.
 - low_confidence: names of fields where the text was blurry, cut off, ambiguous, or you had to romanize or infer. [] if all fields are clear.`;

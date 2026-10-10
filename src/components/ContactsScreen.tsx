@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { EXTRACTED_FIELDS, FIELD_LABELS, STATUSES, type ContactInput, type ContactRow, type Status } from "@/lib/fields";
+import { CONTACT_TYPES, EXTRACTED_FIELDS, FIELD_LABELS, STATUSES, type ContactInput, type ContactRow, type Status } from "@/lib/fields";
 import { deleteContact, displayName, fetchContacts, patchContact } from "@/lib/client/contacts";
 import { download, toCsv, toVCard } from "@/lib/client/export";
 import { NextActionPicker } from "@/components/NextActionPicker";
@@ -29,6 +29,7 @@ export function ContactsScreen() {
   const [status, setStatus] = useState("");
   const [owner, setOwner] = useState("");
   const [event, setEvent] = useState("");
+  const [type, setType] = useState("");
   const [sort, setSort] = useState<SortKey>("newest");
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -57,6 +58,7 @@ export function ContactsScreen() {
         (!status || c.status === status) &&
         (!owner || c.owner === owner) &&
         (!event || c.event === event) &&
+        (!type || c.contact_type === type) &&
         (!q ||
           [
             c.first_name,
@@ -82,7 +84,7 @@ export function ContactsScreen() {
       }
       return b.scanned_at.localeCompare(a.scanned_at);
     });
-  }, [contacts, query, status, owner, event, sort]);
+  }, [contacts, query, status, owner, event, type, sort]);
 
   if (loadError)
     return (
@@ -118,6 +120,7 @@ export function ContactsScreen() {
         <Select label="Status" value={status} onChange={setStatus} options={[...STATUSES]} />
         <Select label="Owner" value={owner} onChange={setOwner} options={distinct(contacts, "owner")} />
         <Select label="Event" value={event} onChange={setEvent} options={distinct(contacts, "event")} />
+        <Select label="Contact type" value={type} onChange={setType} options={[...CONTACT_TYPES]} />
         <label className="flex flex-col gap-1 text-stone-600">
           Sort
           <select
@@ -262,7 +265,7 @@ function ContactItem({
           </p>
           <p className="truncate text-sm text-stone-600">{[c.job_title, c.company].filter(Boolean).join(" · ")}</p>
           <p className="truncate text-sm text-stone-500">
-            {[c.event, c.date_met, c.owner && `Owner: ${c.owner}`].filter(Boolean).join(" · ")}
+            {[c.contact_type, c.event, c.date_met, c.owner && `Owner: ${c.owner}`].filter(Boolean).join(" · ")}
           </p>
           {c.next_action && (
             <p className={`mt-1 truncate text-sm ${overdue ? "font-semibold text-red-700" : "text-stone-700"}`}>
@@ -289,7 +292,7 @@ function ContactItem({
   );
 }
 
-const FOLLOW_UP_FIELDS = ["owner", "next_action", "next_action_date", "notes"] as const;
+const FOLLOW_UP_FIELDS = ["contact_type", "owner", "next_action", "next_action_date", "notes"] as const;
 type FollowUpField = (typeof FOLLOW_UP_FIELDS)[number];
 const DETAIL_FIELDS = [...EXTRACTED_FIELDS, "event", "date_met"] as const;
 
@@ -385,6 +388,22 @@ function ContactDetails({
       ) : (
         <>
           <div className="flex flex-col gap-2 rounded-lg bg-stone-50 p-2">
+            <label className="flex flex-col gap-1 text-stone-600">
+              Contact type
+              <select
+                value={followUp.contact_type}
+                onChange={(e) => setFollowUp("contact_type", e.target.value)}
+                className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-ink"
+              >
+                <option value="">—</option>
+                {CONTACT_TYPES.map((t) => (
+                  <option key={t}>{t}</option>
+                ))}
+                {followUp.contact_type && !(CONTACT_TYPES as readonly string[]).includes(followUp.contact_type) && (
+                  <option>{followUp.contact_type}</option>
+                )}
+              </select>
+            </label>
             <label className="flex flex-col gap-1 text-stone-600">
               Next action
               <NextActionPicker

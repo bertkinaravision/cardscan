@@ -1,5 +1,5 @@
 import "server-only";
-import { EXTRACTED_FIELDS, extractionSchema, type ExtractedField, type Extraction } from "@/lib/fields";
+import { CONTACT_TYPES, EXTRACTED_FIELDS, extractionSchema, type Extraction } from "@/lib/fields";
 import { anthropicExtractor } from "./anthropic";
 import { geminiExtractor } from "./gemini";
 import { mockExtractor } from "./mock";
@@ -103,7 +103,11 @@ export function normalize(json: unknown): unknown {
     out[f] = flatten(v);
   }
   splitSalutation(out);
+  // A suggestion outside the list (or in other wording) is dropped rather than failing the card.
+  const type = flatten(src.contact_type).toLowerCase();
+  out.contact_type = CONTACT_TYPES.find((t) => t.toLowerCase() === type) ?? "";
+  const known: readonly unknown[] = [...EXTRACTED_FIELDS, "contact_type"];
   const lc = Array.isArray(src.low_confidence) ? src.low_confidence : [];
-  out.low_confidence = [...new Set(lc.filter((f): f is ExtractedField => (EXTRACTED_FIELDS as readonly unknown[]).includes(f)))];
+  out.low_confidence = [...new Set(lc.filter((f) => known.includes(f)))];
   return out;
 }

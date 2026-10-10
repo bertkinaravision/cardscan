@@ -1,5 +1,5 @@
 import "server-only";
-import { FIELD_LABELS, NEXT_ACTIONS, RENAMED_STATUSES, SHEET_COLUMNS, STATUSES, type ContactRow, type SheetColumn } from "@/lib/fields";
+import { CONTACT_TYPES, FIELD_LABELS, NEXT_ACTIONS, RENAMED_STATUSES, SHEET_COLUMNS, STATUSES, type ContactRow, type SheetColumn } from "@/lib/fields";
 import { requireEnv } from "./env";
 import { explainGoogleError, sheetsClient } from "./google";
 
@@ -236,6 +236,7 @@ function formattingRequests(
     ...newHeaders,
     dropdown("status", STATUSES),
     dropdown("next_action", NEXT_ACTIONS),
+    dropdown("contact_type", CONTACT_TYPES),
     setupMeta?.metadataId != null
       ? {
           updateDeveloperMetadata: {
