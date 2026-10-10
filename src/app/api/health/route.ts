@@ -1,5 +1,5 @@
 import { auth } from "@/auth";
-import { allowedEmails, cleanEnv, driveUploadMode, isAllowed } from "@/lib/server/env";
+import { allowedEmails, cleanEnv, driveUploadMode, isAllowed, owners } from "@/lib/server/env";
 
 export const dynamic = "force-dynamic";
 
@@ -102,6 +102,7 @@ export async function GET() {
       ALLOWED_EMAILS: isExample(process.env.ALLOWED_EMAILS)
         ? "EXAMPLE VALUE: use your real Gmail addresses"
         : `${allowedEmails().length} address(es)`,
+      OWNERS: owners().length ? `${owners().length} (${owners().join(", ")})` : "not set: owner is free text",
       GOOGLE_SERVICE_ACCOUNT_JSON: full || !serviceAccount.startsWith("ok") ? serviceAccount : "ok",
       SHEET_ID: sheetId,
       DRIVE_FOLDER_ID: folderId,

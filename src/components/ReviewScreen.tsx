@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BlobImage } from "@/components/BlobImage";
 import { NextActionPicker } from "@/components/NextActionPicker";
+import { OwnerPicker } from "@/components/OwnerPicker";
 import {
   CONTACT_TYPES,
   EXTRACTED_FIELDS,
@@ -43,7 +44,7 @@ function initialDraft(card: QueuedCard, defaultOwner: string): ContactInput {
   } as ContactInput;
 }
 
-export function ReviewScreen({ id, defaultOwner }: { id: string; defaultOwner: string }) {
+export function ReviewScreen({ id, defaultOwner, owners }: { id: string; defaultOwner: string; owners: string[] }) {
   const router = useRouter();
   const [card, setCard] = useState<QueuedCard | null | undefined>(undefined);
   const [draft, setDraft] = useState<ContactInput | null>(null);
@@ -265,7 +266,15 @@ export function ReviewScreen({ id, defaultOwner }: { id: string; defaultOwner: s
           options={CONTACT_TYPES}
           flagged={lowConfidence.has("contact_type") && draft.contact_type === (card.extraction?.contact_type ?? "")}
         />
-        <Field name="owner" value={draft.owner} onChange={setField} list="cardscan-owners" />
+        <label className="flex flex-col gap-1 text-sm text-stone-600">
+          {FIELD_LABELS.owner}
+          <OwnerPicker
+            value={draft.owner}
+            onChange={(v) => setField("owner", v)}
+            owners={owners}
+            className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-ink"
+          />
+        </label>
         <label className="flex flex-col gap-1 text-sm text-stone-600">
           {FIELD_LABELS.next_action}
           <NextActionPicker value={draft.next_action} onChange={(v) => setField("next_action", v)} />

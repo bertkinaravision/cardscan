@@ -115,6 +115,7 @@ See `.env.example` for a copy-paste template. **The examples below only show the
 | `AUTH_GOOGLE_ID` | `123-abc.apps.googleusercontent.com` | OAuth client ID (step 3). |
 | `AUTH_GOOGLE_SECRET` | `GOCSPX-...` | OAuth client secret (step 3). |
 | `ALLOWED_EMAILS` | `bert@gmail.com,preeti@gmail.com` | Only these Google accounts can sign in. |
+| `OWNERS` | `Bert,Preeti` | Optional. Names for the Owner dropdown in the app and the Sheet. Add a name here (then redeploy) to add someone; the Sheet's dropdown updates on the next use. Empty: owner is free text. |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | `{"type":"service_account",...}` | Paste the whole key file from step 2. Base64 of the file also works. |
 | `SHEET_ID` | `1AbC...` | Sheet ID (step 4). |
 | `SHEET_TAB` | `Contacts` | Optional. Tab name. |

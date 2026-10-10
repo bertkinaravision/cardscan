@@ -1,6 +1,6 @@
 import "server-only";
 import { CONTACT_TYPES, FIELD_LABELS, NEXT_ACTIONS, RENAMED_STATUSES, SHEET_COLUMNS, STATUSES, type ContactRow, type SheetColumn } from "@/lib/fields";
-import { requireEnv } from "./env";
+import { owners, requireEnv } from "./env";
 import { explainGoogleError, sheetsClient } from "./google";
 
 const tabName = () => process.env.SHEET_TAB || "Contacts";
@@ -45,6 +45,8 @@ export type SheetInfo = {
 // Bump when the dropdowns change, so existing Sheets get the new lists once too.
 const SETUP_VERSION = "3";
 const SETUP_KEY = "cardscan_setup";
+// The owner list is part of it, so adding someone to OWNERS updates the Sheet's dropdown once.
+const setupVersion = () => (owners().length ? `${SETUP_VERSION};owners=${owners().join(",")}` : SETUP_VERSION);
 // Hidden markers (Google Sheets "developer metadata") that stay with the tab when it is renamed, with
 // the header row when rows are inserted above it, and with each column when it is moved or its
 // header renamed, so the app keeps finding all three however the Sheet is formatted.
@@ -112,7 +114,7 @@ async function ensureSheet(): Promise<SheetInfo> {
   // The dropdowns are set when columns are added or the app's lists change (the version is kept in the
   // Sheet's hidden developer metadata). Only columns the app adds are formatted, so your own
   // formatting of existing columns is left alone.
-  if (missing.length > 0 || setupMeta?.metadataValue !== SETUP_VERSION) {
+  if (missing.length > 0 || setupMeta?.metadataValue !== setupVersion()) {
     requests.push(...formattingRequests(sheetId, headerRow, keys, width, setupMeta));
   }
   if (requests.length > 0) await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests } });
@@ -237,15 +239,16 @@ function formattingRequests(
     dropdown("status", STATUSES),
     dropdown("next_action", NEXT_ACTIONS),
     dropdown("contact_type", CONTACT_TYPES),
+    ...(owners().length ? [dropdown("owner", owners())] : []),
     setupMeta?.metadataId != null
       ? {
           updateDeveloperMetadata: {
             dataFilters: [{ developerMetadataLookup: { metadataId: setupMeta.metadataId } }],
-            developerMetadata: { metadataValue: SETUP_VERSION },
+            developerMetadata: { metadataValue: setupVersion() },
             fields: "metadataValue",
           },
         }
-      : marker(SETUP_KEY, SETUP_VERSION, { spreadsheet: true }),
+      : marker(SETUP_KEY, setupVersion(), { spreadsheet: true }),
   ];
 }
 

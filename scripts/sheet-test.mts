@@ -265,3 +265,20 @@ assert.equal(after18.find((c) => c.id === "x3")?.status, "In discussion");
 assert.equal(rowX2[statusCol18], "New", "Sheet cell rewritten");
 assert.equal(rowX3[statusCol18], "In discussion", "Sheet cell rewritten");
 console.log("Renamed status tests passed.");
+
+// 19. OWNERS adds an Owner dropdown to the Sheet, and changing OWNERS updates it once.
+const v19 = fake.state.validations;
+process.env.OWNERS = "Bert, Preeti";
+await listContacts();
+assert.equal(fake.state.validations, v19 + 4, "dropdowns reapplied, now including owner");
+await listContacts();
+assert.equal(fake.state.validations, v19 + 4, "only once");
+process.env.OWNERS = "Bert,Preeti,Wei Ling";
+await listContacts();
+assert.equal(fake.state.validations, v19 + 8, "a new owner updates the Sheet's dropdown");
+assert.match(ops.setupMarker(), /owners=Bert,Preeti,Wei Ling/);
+const { ownerFor } = await import("../src/lib/server/env");
+assert.equal(ownerFor("bert wouters"), "Bert", "signed-in person preselected");
+assert.equal(ownerFor("Someone Else"), "", "nobody preselected when not in OWNERS");
+delete process.env.OWNERS;
+console.log("Owner list tests passed.");

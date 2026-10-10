@@ -5,6 +5,7 @@ import { CONTACT_TYPES, EXTRACTED_FIELDS, FIELD_LABELS, STATUSES, type ContactIn
 import { deleteContact, displayName, fetchContacts, patchContact } from "@/lib/client/contacts";
 import { download, toCsv, toVCard } from "@/lib/client/export";
 import { NextActionPicker } from "@/components/NextActionPicker";
+import { OwnerPicker } from "@/components/OwnerPicker";
 import { SuggestionLists } from "@/lib/client/suggestions";
 import { today } from "@/lib/client/date";
 
@@ -22,7 +23,7 @@ function distinct(rows: ContactRow[], key: keyof ContactRow) {
   return [...new Set(rows.map((r) => r[key]).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 }
 
-export function ContactsScreen() {
+export function ContactsScreen({ owners }: { owners: string[] }) {
   const [contacts, setContacts] = useState<ContactRow[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -118,7 +119,7 @@ export function ContactsScreen() {
       />
       <div className="grid grid-cols-2 gap-2 text-sm">
         <Select label="Status" value={status} onChange={setStatus} options={[...STATUSES]} />
-        <Select label="Owner" value={owner} onChange={setOwner} options={distinct(contacts, "owner")} />
+        <Select label="Owner" value={owner} onChange={setOwner} options={[...new Set([...owners, ...distinct(contacts, "owner")])]} />
         <Select label="Event" value={event} onChange={setEvent} options={distinct(contacts, "event")} />
         <Select label="Contact type" value={type} onChange={setType} options={[...CONTACT_TYPES]} />
         <label className="flex flex-col gap-1 text-stone-600">
@@ -168,6 +169,7 @@ export function ContactsScreen() {
             onToggle={() => setOpenId((id) => (id === c.id ? null : c.id))}
             onChange={replace}
             onDeleted={() => setContacts((cs) => cs?.filter((x) => x.id !== c.id) ?? null)}
+            owners={owners}
           />
         ))}
       </ul>
@@ -209,12 +211,14 @@ function ContactItem({
   onToggle,
   onChange,
   onDeleted,
+  owners,
 }: {
   contact: ContactRow;
   open: boolean;
   onToggle: () => void;
   onChange: (row: ContactRow) => void;
   onDeleted: () => void;
+  owners: string[];
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -287,7 +291,7 @@ function ContactItem({
         </select>
       </div>
       {error && <p className="px-3 pb-2 text-sm text-red-700">Not saved: {error}</p>}
-      {open && <ContactDetails contact={c} busy={busy} onSave={save} onDelete={remove} />}
+      {open && <ContactDetails contact={c} busy={busy} onSave={save} onDelete={remove} owners={owners} />}
     </li>
   );
 }
@@ -301,11 +305,13 @@ function ContactDetails({
   busy,
   onSave,
   onDelete,
+  owners,
 }: {
   contact: ContactRow;
   busy: boolean;
   onSave: (patch: Partial<ContactInput>) => Promise<boolean>;
   onDelete: () => void;
+  owners: string[];
 }) {
   const [editing, setEditing] = useState(false);
   // Only what the person typed is kept here; the rest shows the contact's latest values, and only
@@ -423,10 +429,10 @@ function ContactDetails({
               </label>
               <label className="flex min-w-0 flex-col gap-1 text-stone-600">
                 Owner
-                <input
+                <OwnerPicker
                   value={followUp.owner}
-                list="cardscan-owners"
-                  onChange={(e) => setFollowUp("owner", e.target.value)}
+                  onChange={(v) => setFollowUp("owner", v)}
+                  owners={owners}
                   className="w-full min-w-0 rounded-lg border border-stone-300 bg-white px-3 py-2 text-ink"
                 />
               </label>

@@ -202,7 +202,7 @@ test("UI-12", "Follow-up edited on stale data", async () => {
   await page.getByRole("button", { name: "Refresh" }).click();
   await page.waitForTimeout(800);
   const shownNotes = await page.getByRole("textbox", { name: "Notes" }).inputValue();
-  await page.locator("li input[list=cardscan-owners]").fill("Tester");
+  await page.locator("li select").filter({ has: page.locator("option", { hasText: "Other Person" }) }).selectOption("Tester");
   await page.getByRole("button", { name: "Save follow-up" }).click();
   await page.waitForTimeout(1500);
   const saved = (await listContacts(c)).body.contacts.find((x) => x.id === id);
@@ -285,6 +285,22 @@ test("UI-16", "Contact type suggested, confirmed and saved", async () => {
   record("UI-16", "Contact type from the model", "prefilled + 'Check', saved, filterable",
     `prefilled "${prefilled}", Check shown: ${check > 0}; saved "${saved?.contact_type}"; filter Vendor shows ${hiddenWhenVendor}, Investor shows ${shownWhenInvestor}`,
     prefilled === "Investor" && check > 0 && saved?.contact_type === "Investor" && hiddenWhenVendor === 0 && shownWhenInvestor > 0);
+  await ctx.close();
+});
+
+test("UI-17", "Owner dropdown from OWNERS", async () => {
+  const { ctx, page } = await open();
+  await addCard(page);
+  await openReview(page);
+  const owner = page.locator("select").filter({ has: page.locator("option", { hasText: "Other Person" }) });
+  const preselected = await owner.inputValue();
+  const options = await owner.locator("option").allTextContents();
+  await owner.selectOption("Other Person");
+  await page.getByRole("button", { name: /Approve & save/ }).click();
+  await page.waitForURL(`${BASE}/`, { timeout: 15000 });
+  const saved = (await listContacts(await cookie())).body.contacts[0];
+  record("UI-17", "Owner is a dropdown of OWNERS, signed-in person preselected", "preselected Tester, saved Other Person",
+    `preselected "${preselected}", options ${JSON.stringify(options)}, saved "${saved?.owner}"`, preselected === "Tester" && saved?.owner === "Other Person");
   await ctx.close();
 });
 
