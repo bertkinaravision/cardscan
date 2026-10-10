@@ -1,5 +1,3 @@
-import type { Extraction } from "@/lib/fields";
-
 export type CardImage = { mimeType: string; base64: string };
 
 export interface VisionExtractor {
@@ -8,5 +6,3 @@ export interface VisionExtractor {
 }
 
 export class LlmRateLimitError extends Error {}
-
-export type { Extraction };

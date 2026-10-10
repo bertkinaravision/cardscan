@@ -27,14 +27,13 @@ for (const c of SHEET_COLUMNS) {
 }
 export const headerKey = (h: string): SheetColumn | null => HEADER_NAMES.get(squash(h)) ?? null;
 
-// headers: the header row as written; keys: which of our columns each one is (null = a column of your own).
+// keys: which of our columns each column of the header row is (null = a column of your own).
 // headerRow: the header row's number (1 unless someone added rows above it, such as a title).
 // lastRow: the last row with anything in it (known once the rows have been read).
 export type SheetInfo = {
   sheetId: number;
   title: string;
   headerRow: number;
-  headers: string[];
   keys: (SheetColumn | null)[];
   lastRow?: number;
 };
@@ -125,7 +124,6 @@ async function ensureSheet(): Promise<SheetInfo> {
     if (!k && byName && !existingKeys.includes(byName)) existingKeys[i] = byName;
   });
   const missing = SHEET_COLUMNS.filter((c) => !existingKeys.includes(c));
-  const headers = [...Array.from({ length: width }, (_, i) => existing[i] ?? ""), ...missing];
   const keys: (SheetColumn | null)[] = [...existingKeys, ...missing];
 
   if (missing.length > 0) {
@@ -245,7 +243,7 @@ async function ensureSheet(): Promise<SheetInfo> {
     );
   }
   if (requests.length > 0) await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests } });
-  return { sheetId, title, headerRow, headers, keys };
+  return { sheetId, title, headerRow, keys };
 }
 
 function toRow(keys: (SheetColumn | null)[], values: string[]): ContactRow {
@@ -265,7 +263,7 @@ async function readAll(): Promise<{ info: SheetInfo; rows: { rowNumber: number; 
   const res = await sheetsClient()
     .spreadsheets.values.get({
       spreadsheetId: requireEnv("SHEET_ID"),
-      range: `${quoted(info.title)}!A${info.headerRow + 1}:${columnLetter(info.headers.length - 1)}`,
+      range: `${quoted(info.title)}!A${info.headerRow + 1}:${columnLetter(info.keys.length - 1)}`,
     })
     .catch((err) => {
       throw explainGoogleError(err, "sheet");
