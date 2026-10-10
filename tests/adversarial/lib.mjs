@@ -40,7 +40,7 @@ export function record(id, scenario, expected, actual, pass, severity = "") {
 
 export const emptyContact = (o = {}) => ({
   salutation: "", first_name: "", last_name: "", job_title: "", company: "", email: "", mobile: "", website: "",
-  address: "", linkedin: "", other: "", event: "", date_met: "", notes: "", status: "To contact", owner: "",
+  address: "", linkedin: "", other: "", event: "", date_met: "", notes: "", status: "New", owner: "",
   next_action: "", next_action_date: "", ...o,
 });
 

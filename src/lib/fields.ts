@@ -38,13 +38,15 @@ export const FIELD_LABELS: Record<string, string> = {
 };
 
 export const STATUSES = [
-  "To contact",
+  "New",
   "Contacted",
-  "In conversation",
+  "In discussion",
   "Closed",
   "Not relevant",
 ] as const;
 export type Status = (typeof STATUSES)[number];
+// Labels used before October 2026; rows still holding them are rewritten when the Sheet is read.
+export const RENAMED_STATUSES: Record<string, Status> = { "To contact": "New", "In conversation": "In discussion" };
 
 // Choices in the "Next action" dropdown. Anything else can be typed via "Other…".
 export const NEXT_ACTIONS = [
@@ -117,11 +119,11 @@ export const contactInputSchema = z.object({
 });
 export type ContactInput = z.infer<typeof contactInputSchema>;
 
-// Every field empty (status "To contact"). A save starts from this, so a draft kept on the phone
+// Every field empty (status "New"). A save starts from this, so a draft kept on the phone
 // by an older version, without fields added since (such as salutation), can still be saved.
 export function blankContactInput(): ContactInput {
   const keys = Object.keys(contactInputSchema.shape) as (keyof ContactInput)[];
-  return { ...(Object.fromEntries(keys.map((k) => [k, ""])) as Omit<ContactInput, "status">), status: "To contact" };
+  return { ...(Object.fromEntries(keys.map((k) => [k, ""])) as Omit<ContactInput, "status">), status: "New" };
 }
 
 // A short message naming the first field that failed validation (shown to the person).

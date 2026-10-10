@@ -449,7 +449,7 @@ test("ST-9", "1000 contacts", async () => {
   const c = await cookie();
   await seed(c, ["warm-up"]);
   const h = (await rows())[0];
-  const bulk = [...Array(1000).keys()].map((i) => h.map((k) => (k === "id" ? `bulk-${i}` : k === "first_name" ? `Person ${i}` : k === "status" ? "To contact" : "")));
+  const bulk = [...Array(1000).keys()].map((i) => h.map((k) => (k === "id" ? `bulk-${i}` : k === "first_name" ? `Person ${i}` : k === "status" ? "New" : "")));
   await fake.op("insertRows", "Contacts", 2, 1000, bulk);
   let t = Date.now();
   const r = await contacts(c);

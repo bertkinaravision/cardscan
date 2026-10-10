@@ -1,5 +1,5 @@
 import "server-only";
-import { FIELD_LABELS, NEXT_ACTIONS, SHEET_COLUMNS, STATUSES, type ContactRow, type SheetColumn } from "@/lib/fields";
+import { FIELD_LABELS, NEXT_ACTIONS, RENAMED_STATUSES, SHEET_COLUMNS, STATUSES, type ContactRow, type SheetColumn } from "@/lib/fields";
 import { requireEnv } from "./env";
 import { explainGoogleError, sheetsClient } from "./google";
 
@@ -42,8 +42,8 @@ export type SheetInfo = {
   lastRow?: number;
 };
 
-// Bump when the formatting applied to the tab changes, so existing Sheets get it once too.
-const SETUP_VERSION = "2";
+// Bump when the dropdowns change, so existing Sheets get the new lists once too.
+const SETUP_VERSION = "3";
 const SETUP_KEY = "cardscan_setup";
 // Hidden markers (Google Sheets "developer metadata") that stay with the tab when it is renamed, with
 // the header row when rows are inserted above it, and with each column when it is moved or its
@@ -109,10 +109,11 @@ async function ensureSheet(): Promise<SheetInfo> {
   if (!headerMarked) {
     requests.push(marker(HEADER_KEY, "1", { dimensionRange: { sheetId, dimension: "ROWS", startIndex: headerRow - 1, endIndex: headerRow } }));
   }
-  // Formatting is applied when columns are added, and once to Sheets set up by an older version
-  // (marked in the Sheet's hidden developer metadata), so formatting you change later is left alone.
+  // The dropdowns are set when columns are added or the app's lists change (the version is kept in the
+  // Sheet's hidden developer metadata). Only columns the app adds are formatted, so your own
+  // formatting of existing columns is left alone.
   if (missing.length > 0 || setupMeta?.metadataValue !== SETUP_VERSION) {
-    requests.push(...formattingRequests(sheetId, headerRow, keys, setupMeta));
+    requests.push(...formattingRequests(sheetId, headerRow, keys, width, setupMeta));
   }
   if (requests.length > 0) await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests } });
   return { sheetId, title, headerRow, keys };
@@ -185,40 +186,56 @@ function mapColumns(existing: string[], found: Meta[], sheetId: number) {
   return { width, marks, keys, missing };
 }
 
-// Dropdown for the status column; dates shown (and read back) as yyyy-mm-dd even when typed
-// by hand in Sheets, so the app's date fields and sorting keep working; bold header.
-function formattingRequests(sheetId: number, headerRow: number, keys: (SheetColumn | null)[], setupMeta: Meta | undefined): object[] {
-  const statusCol = keys.indexOf("status");
-  const nextActionCol = keys.indexOf("next_action");
-  const dateFormats = (["date_met", "next_action_date"] as const).map((c) => {
-    const col = keys.indexOf(c);
+// Columns the app adds (from index `width` on) get a bold header, and the date columns among them show
+// (and read back) as yyyy-mm-dd even when typed by hand, so the app's date fields and sorting keep
+// working. The dropdowns allow other values to be typed too.
+function formattingRequests(
+  sheetId: number,
+  headerRow: number,
+  keys: (SheetColumn | null)[],
+  width: number,
+  setupMeta: Meta | undefined,
+): object[] {
+  const dropdown = (column: SheetColumn, values: readonly string[]) => {
+    const col = keys.indexOf(column);
     return {
+      setDataValidation: {
+        range: { sheetId, startRowIndex: headerRow, startColumnIndex: col, endColumnIndex: col + 1 },
+        rule: {
+          condition: { type: "ONE_OF_LIST", values: values.map((v) => ({ userEnteredValue: v })) },
+          strict: false,
+          showCustomUi: true,
+        },
+      },
+    };
+  };
+  const dateFormats = (["date_met", "next_action_date"] as const)
+    .map((c) => keys.indexOf(c))
+    .filter((col) => col >= width)
+    .map((col) => ({
       repeatCell: {
         range: { sheetId, startRowIndex: headerRow, startColumnIndex: col, endColumnIndex: col + 1 },
         cell: { userEnteredFormat: { numberFormat: { type: "DATE", pattern: "yyyy-mm-dd" } } },
         fields: "userEnteredFormat.numberFormat",
       },
-    };
-  });
+    }));
+  const newHeaders =
+    keys.length > width
+      ? [
+          {
+            repeatCell: {
+              range: { sheetId, startRowIndex: headerRow - 1, endRowIndex: headerRow, startColumnIndex: width, endColumnIndex: keys.length },
+              cell: { userEnteredFormat: { textFormat: { bold: true } } },
+              fields: "userEnteredFormat.textFormat.bold",
+            },
+          },
+        ]
+      : [];
   return [
     ...dateFormats,
-    {
-      repeatCell: {
-        range: { sheetId, startRowIndex: headerRow - 1, endRowIndex: headerRow },
-        cell: { userEnteredFormat: { textFormat: { bold: true } } },
-        fields: "userEnteredFormat.textFormat.bold",
-      },
-    },
-    {
-      setDataValidation: {
-        range: { sheetId, startRowIndex: headerRow, startColumnIndex: statusCol, endColumnIndex: statusCol + 1 },
-        rule: {
-          condition: { type: "ONE_OF_LIST", values: STATUSES.map((v) => ({ userEnteredValue: v })) },
-          strict: false,
-          showCustomUi: true,
-        },
-      },
-    },
+    ...newHeaders,
+    dropdown("status", STATUSES),
+    dropdown("next_action", NEXT_ACTIONS),
     setupMeta?.metadataId != null
       ? {
           updateDeveloperMetadata: {
@@ -228,17 +245,6 @@ function formattingRequests(sheetId: number, headerRow: number, keys: (SheetColu
           },
         }
       : marker(SETUP_KEY, SETUP_VERSION, { spreadsheet: true }),
-    // Next action: same choices as the app; anything else may still be typed.
-    {
-      setDataValidation: {
-        range: { sheetId, startRowIndex: headerRow, startColumnIndex: nextActionCol, endColumnIndex: nextActionCol + 1 },
-        rule: {
-          condition: { type: "ONE_OF_LIST", values: NEXT_ACTIONS.map((v) => ({ userEnteredValue: v })) },
-          strict: false,
-          showCustomUi: true,
-        },
-      },
-    },
   ];
 }
 
@@ -263,8 +269,27 @@ async function readAll(): Promise<{ info: SheetInfo; rows: { rowNumber: number; 
     })
     .catch(sheetError);
   const rows = (res.data.values ?? []).map((v, i) => ({ rowNumber: i + info.headerRow + 1, values: v.map(String) }));
+  await renameOldStatuses(info, rows);
   const filled = rows.filter((r) => r.values.some(Boolean));
   return { info: { ...info, lastRow: filled.at(-1)?.rowNumber ?? info.headerRow }, rows };
+}
+
+// Rows still holding an earlier status label get the current one, in the Sheet and in `rows`.
+// A failure here is only logged: the labels are shown converted anyway and fixed on the next read.
+async function renameOldStatuses(info: SheetInfo, rows: { rowNumber: number; values: string[] }[]) {
+  const col = info.keys.indexOf("status");
+  const stale = rows.filter((r) => RENAMED_STATUSES[r.values[col]]);
+  if (stale.length === 0) return;
+  for (const r of stale) r.values[col] = RENAMED_STATUSES[r.values[col]];
+  await sheetsClient()
+    .spreadsheets.values.batchUpdate({
+      spreadsheetId: requireEnv("SHEET_ID"),
+      requestBody: {
+        valueInputOption: "RAW",
+        data: stale.map((r) => ({ range: `${quoted(info.title)}!${columnLetter(col)}${r.rowNumber}`, values: [[r.values[col]]] })),
+      },
+    })
+    .catch((err) => console.error("[sheet] could not update old status labels:", err instanceof Error ? err.message : err));
 }
 
 export async function listContacts(): Promise<ContactRow[]> {

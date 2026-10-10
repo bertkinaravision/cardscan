@@ -9,9 +9,9 @@ import { SuggestionLists } from "@/lib/client/suggestions";
 import { today } from "@/lib/client/date";
 
 const STATUS_STYLES: Record<string, string> = {
-  "To contact": "bg-brand/10 text-brand border-brand/30",
+  New: "bg-brand/10 text-brand border-brand/30",
   Contacted: "bg-accent/15 text-teal-800 border-accent/40",
-  "In conversation": "bg-amber-50 text-amber-900 border-amber-300",
+  "In discussion": "bg-amber-50 text-amber-900 border-amber-300",
   Closed: "bg-emerald-50 text-emerald-800 border-emerald-300",
   "Not relevant": "bg-stone-100 text-stone-500 border-stone-300",
 };
@@ -275,7 +275,7 @@ function ContactItem({
           value={c.status}
           disabled={busy}
           onChange={(e) => save({ status: e.target.value as Status })}
-          className={`max-w-[9.5rem] shrink-0 rounded-full border px-2 py-1 text-sm ${STATUS_STYLES[c.status] ?? STATUS_STYLES["To contact"]}`}
+          className={`max-w-[9.5rem] shrink-0 rounded-full border px-2 py-1 text-sm ${STATUS_STYLES[c.status] ?? STATUS_STYLES.New}`}
         >
           {STATUSES.map((s) => (
             <option key={s}>{s}</option>

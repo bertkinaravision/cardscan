@@ -34,7 +34,7 @@ function initialDraft(card: QueuedCard, defaultOwner: string): ContactInput {
     event: card.event,
     date_met: card.dateMet,
     notes: "",
-    status: "To contact",
+    status: "New",
     owner: defaultOwner,
     next_action: "",
     next_action_date: "",

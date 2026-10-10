@@ -26,7 +26,7 @@ const { SHEET_COLUMNS } = await import("../src/lib/fields");
 type Row = Parameters<typeof appendContact>[0];
 
 const row = (id: string, extra: Partial<Row> = {}): Row =>
-  ({ ...Object.fromEntries(SHEET_COLUMNS.map((c) => [c, ""])), id, status: "To contact", ...extra }) as Row;
+  ({ ...Object.fromEntries(SHEET_COLUMNS.map((c) => [c, ""])), id, status: "New", ...extra }) as Row;
 
 // 1. Missing tab and header are created.
 await appendContact(row("a1", { first_name: "Rachel", last_name: "Lim", notes: '=HYPERLINK("x")' }));
@@ -52,8 +52,8 @@ assert.equal(fake.state.validations, 2, "no extra dropdowns when header is compl
 
 // 3. Update keeps unrelated cells, including the person's own column and hand edits made meanwhile.
 contacts.rows[1][header.indexOf("notes")] = "typed in the Sheet";
-const updated = await updateContact("a1", { status: "In conversation", next_action: "Call" });
-assert.equal(updated?.status, "In conversation");
+const updated = await updateContact("a1", { status: "In discussion", next_action: "Call" });
+assert.equal(updated?.status, "In discussion");
 assert.equal(contacts.rows[1][header.indexOf("My column")], "keep me");
 assert.equal(contacts.rows[1][header.indexOf("first_name")], "Rachel");
 assert.ok(contacts.rows[1][header.indexOf("last_updated")], "last_updated set");
@@ -81,13 +81,13 @@ console.log("All Sheet/Drive tests passed.");
 const { mergeContact } = await import("../src/lib/server/merge");
 const old = row("m1", {
   first_name: "David", last_name: "Tan", company: "Example Pte Ltd", job_title: "Manager", email: "d@x.example",
-  event: "SuperAI", date_met: "2026-06-01", notes: "Likes golf", status: "In conversation", owner: "Preeti",
+  event: "SuperAI", date_met: "2026-06-01", notes: "Likes golf", status: "In discussion", owner: "Preeti",
   next_action: "Send deck", image_file_ids: "old1,old2",
 });
 const card = {
   ...Object.fromEntries(SHEET_COLUMNS.map((c) => [c, ""])),
   first_name: "David", last_name: "Tan", company: "Example Pte Ltd", job_title: "Director", email: "",
-  event: "MedTech Asia", date_met: "2026-10-01", notes: "Now runs APAC", status: "To contact", owner: "Bert",
+  event: "MedTech Asia", date_met: "2026-10-01", notes: "Now runs APAC", status: "New", owner: "Bert",
 } as Parameters<typeof mergeContact>[1];
 const m = mergeContact(old, card, { front: { id: "new1", link: "L1" }, back: null }, "2026-10-09T00:00:00Z");
 assert.equal(m.job_title, "Director", "newer card value wins");
@@ -250,3 +250,18 @@ const tab17 = ops.tab("Contacts");
 const filled17 = tab17.rows.filter((r: string[]) => r.some(Boolean));
 assert.ok(filled17.at(-1).includes("x4"), "new contact added below every existing contact");
 console.log("Delete and concurrent edit tests passed.");
+
+// 18. Rows with an earlier status label ("To contact", "In conversation") get the current one.
+const tab18 = ops.tab("Contacts");
+const hdr18: string[] = tab18.rows.find((r: string[]) => r.includes("status"))!;
+const statusCol18 = hdr18.indexOf("status");
+const rowX2 = tab18.rows.find((r: string[]) => r.includes("x2"))!;
+const rowX3 = tab18.rows.find((r: string[]) => r.includes("x3"))!;
+rowX2[statusCol18] = "To contact";
+rowX3[statusCol18] = "In conversation";
+const after18 = await listContacts();
+assert.equal(after18.find((c) => c.id === "x2")?.status, "New");
+assert.equal(after18.find((c) => c.id === "x3")?.status, "In discussion");
+assert.equal(rowX2[statusCol18], "New", "Sheet cell rewritten");
+assert.equal(rowX3[statusCol18], "In discussion", "Sheet cell rewritten");
+console.log("Renamed status tests passed.");

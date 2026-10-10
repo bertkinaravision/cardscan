@@ -165,7 +165,7 @@ One row per approved contact, in this column order:
 - `salutation` holds titles such as Dr., Prof., Mr., Ms.; letters after a name (PhD, MBA) go to `other`.
 - `mobile` is the mobile number (or the main number if there is no mobile). Office, direct line and fax numbers go to `other`, as does a name printed only in Chinese or Japanese.
 
-- `status` has a dropdown: To contact, Contacted, In conversation, Closed, Not relevant.
+- `status` has a dropdown: New, Contacted, In discussion, Closed, Not relevant. (Rows with the earlier labels "To contact" and "In conversation" are switched to "New" and "In discussion" automatically.)
 - `next_action` has a dropdown too (Send email, Send brochure / deck, Call, Schedule meeting, Arrange demo, Send proposal / quote, Connect on LinkedIn, Introduce to colleague, Follow up later); anything else can still be typed. Change the list in `NEXT_ACTIONS` in `src/lib/fields.ts`.
 - `id` and `image_file_ids` are used by the app to find, edit and delete rows. Don't change them.
 - Make it look nice: colours, column widths, bold, freezing, hiding columns (`id`, `image_file_ids` and `source_card_ids` are only for the app), sorting and filtering are all fine.
