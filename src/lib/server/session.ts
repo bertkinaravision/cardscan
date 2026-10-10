@@ -63,6 +63,23 @@ async function userAccessToken(req: Request): Promise<string | null> {
   return data.access_token;
 }
 
+// Request bodies that can't be read are the sender's mistake (400), not a server error.
+export async function readForm(req: Request): Promise<FormData> {
+  try {
+    return await req.formData();
+  } catch {
+    throw new HttpError(400, "Expected a form upload.");
+  }
+}
+
+export function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new HttpError(400, "The request is not valid JSON.");
+  }
+}
+
 export function errorResponse(err: unknown): Response {
   if (err instanceof HttpError) return Response.json({ error: err.message }, { status: err.status });
   console.error(err);

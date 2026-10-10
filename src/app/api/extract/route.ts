@@ -1,6 +1,6 @@
 import { extractCard, LlmRateLimitError } from "@/lib/llm";
 import { readImage } from "@/lib/server/images";
-import { errorResponse, HttpError, requireUser } from "@/lib/server/session";
+import { errorResponse, HttpError, readForm, requireUser } from "@/lib/server/session";
 
 export const maxDuration = 60;
 
@@ -8,7 +8,7 @@ export const maxDuration = 60;
 export async function POST(req: Request) {
   try {
     await requireUser(req);
-    const form = await req.formData();
+    const form = await readForm(req);
     const front = await readImage(form, "front");
     if (!front) throw new HttpError(400, "The front photo is missing.");
     const back = await readImage(form, "back");

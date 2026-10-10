@@ -1,7 +1,7 @@
 import { contactInputSchema, invalidFieldMessage } from "@/lib/fields";
 import { deleteImages } from "@/lib/server/google";
 import { driveUploadMode } from "@/lib/server/env";
-import { errorResponse, HttpError, requireUser } from "@/lib/server/session";
+import { errorResponse, HttpError, parseJson, requireUser } from "@/lib/server/session";
 import { deleteContactRow, updateContact } from "@/lib/server/sheet";
 
 const patchSchema = contactInputSchema.partial();
@@ -11,7 +11,7 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/contacts/[id]"
   try {
     await requireUser(req);
     const { id } = await ctx.params;
-    const parsed = patchSchema.safeParse(await req.json());
+    const parsed = patchSchema.safeParse(parseJson(await req.text()));
     if (!parsed.success) throw new HttpError(400, invalidFieldMessage(parsed.error));
     const updated = await updateContact(id, parsed.data);
     if (!updated) throw new HttpError(404, "Contact not found.");

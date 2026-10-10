@@ -2,7 +2,7 @@ import { blankContactInput, contactInputSchema, invalidFieldMessage, type Contac
 import { deleteImages, uploadImage } from "@/lib/server/google";
 import { readImage } from "@/lib/server/images";
 import { mergeContact, type Uploaded } from "@/lib/server/merge";
-import { errorResponse, HttpError, requireUser } from "@/lib/server/session";
+import { errorResponse, HttpError, parseJson, readForm, requireUser } from "@/lib/server/session";
 import { appendContact, listContacts, listContactsWithLayout, updateContact } from "@/lib/server/sheet";
 
 export const maxDuration = 60;
@@ -22,10 +22,10 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const user = await requireUser(req);
-    const form = await req.formData();
+    const form = await readForm(req);
     const id = String(form.get("id") ?? "");
     if (!/^[a-zA-Z0-9-]{8,64}$/.test(id)) throw new HttpError(400, "Invalid id.");
-    const parsed = contactInputSchema.safeParse({ ...blankContactInput(), ...JSON.parse(String(form.get("contact") ?? "{}")) });
+    const parsed = contactInputSchema.safeParse({ ...blankContactInput(), ...(parseJson(String(form.get("contact") ?? "{}")) as object) });
     if (!parsed.success) throw new HttpError(400, invalidFieldMessage(parsed.error));
     const { first_name, last_name, company, email, mobile } = parsed.data;
     if (![first_name, last_name, company, email, mobile].some(Boolean))
