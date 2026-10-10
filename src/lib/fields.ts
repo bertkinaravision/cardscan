@@ -39,6 +39,14 @@ export const FIELD_LABELS: Record<string, string> = {
   next_action: "Next action",
   next_action_date: "Next action date",
   linkedin_search: "LinkedIn search",
+  id: "ID",
+  scanned_by: "Scanned by",
+  scanned_at: "Scanned at",
+  last_updated: "Last updated",
+  image_front_link: "Card front",
+  image_back_link: "Card back",
+  image_file_ids: "Photo file IDs",
+  source_card_ids: "Merged card IDs",
 };
 
 export const STATUSES = [

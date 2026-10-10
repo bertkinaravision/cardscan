@@ -19,10 +19,13 @@ const { fake, install, ops } = await import("../tests/fake-google.mjs");
 install();
 
 // ---- tests ----
-const { appendContact, listContacts, updateContact, deleteContactRow } = await import("../src/lib/server/sheet");
+const { appendContact, listContacts, updateContact, deleteContactRow, headerKey } = await import("../src/lib/server/sheet");
+// Header cells are readable labels ("First name") once the app has formatted the tab.
+const colOf = (hdr: string[], key: string) => hdr.findIndex((h) => headerKey(h) === key);
+const isHeader = (r: string[]) => r.some((h) => headerKey(h) === "salutation");
 const getContact = async (id: string) => (await listContacts()).find((c) => c.id === id) ?? null;
 const { uploadImage, deleteImages } = await import("../src/lib/server/google");
-const { SHEET_COLUMNS } = await import("../src/lib/fields");
+const { FIELD_LABELS, SHEET_COLUMNS } = await import("../src/lib/fields");
 type Row = Parameters<typeof appendContact>[0];
 
 const row = (id: string, extra: Partial<Row> = {}): Row =>
@@ -32,7 +35,13 @@ const row = (id: string, extra: Partial<Row> = {}): Row =>
 await appendContact(row("a1", { first_name: "Rachel", last_name: "Lim", notes: '=HYPERLINK("x")' }));
 const contacts = fake.state.tabs.find((t: { title: string }) => t.title === "Contacts") as { rows: string[][] };
 assert.ok(contacts, "Contacts tab created");
-assert.deepEqual(contacts.rows[0], [...SHEET_COLUMNS], "header row written");
+assert.deepEqual(contacts.rows[0], SHEET_COLUMNS.map((c) => FIELD_LABELS[c]), "header row written, with readable names");
+const styleReqs = fake.log.filter((l: string) => l.startsWith("req:"));
+for (const r of ["addBanding", "setBasicFilter", "addConditionalFormatRule", "updateSheetProperties", "updateDimensionProperties"])
+  assert.ok(styleReqs.includes(`req:${r}`), `tab formatted (${r})`);
+assert.ok(fake.state.meta.some((m: { metadataKey: string }) => m.metadataKey === "cardscan_style"), "formatting marked as done");
+await listContacts();
+assert.equal(fake.log.filter((l: string) => l === "req:addBanding").length, 1, "formatting applied only once");
 assert.equal(fake.state.validations, 3, "status, next action and contact type dropdowns added");
 assert.equal(contacts.rows[1][SHEET_COLUMNS.indexOf("notes")], '=HYPERLINK("x")', "text kept as-is (RAW)");
 
@@ -47,18 +56,18 @@ assert.equal(list.length, 2);
 assert.equal(list[0].first_name, "Rachel");
 assert.equal(list[0].last_name, "Lim");
 assert.equal(list[1].first_name, "Kenji");
-assert.equal(contacts.rows[2][header.indexOf("first_name")], "Kenji", "written into the reordered column");
+assert.equal(contacts.rows[2][colOf(header, "first_name")], "Kenji", "written into the reordered column");
 assert.equal(fake.state.validations, 3, "no extra dropdowns when header is complete");
 
 // 3. Update keeps unrelated cells, including the person's own column and hand edits made meanwhile.
-contacts.rows[1][header.indexOf("notes")] = "typed in the Sheet";
+contacts.rows[1][colOf(header, "notes")] = "typed in the Sheet";
 const updated = await updateContact("a1", { status: "In discussion", next_action: "Call" });
 assert.equal(updated?.status, "In discussion");
 assert.equal(contacts.rows[1][header.indexOf("My column")], "keep me");
-assert.equal(contacts.rows[1][header.indexOf("first_name")], "Rachel");
-assert.ok(contacts.rows[1][header.indexOf("last_updated")], "last_updated set");
+assert.equal(contacts.rows[1][colOf(header, "first_name")], "Rachel");
+assert.ok(contacts.rows[1][colOf(header, "last_updated")], "last_updated set");
 assert.equal((await getContact("a1"))?.next_action, "Call");
-assert.equal(contacts.rows[1][header.indexOf("notes")], "typed in the Sheet", "hand edit in the Sheet kept");
+assert.equal(contacts.rows[1][colOf(header, "notes")], "typed in the Sheet", "hand edit in the Sheet kept");
 assert.equal(await updateContact("nope", { status: "Closed" }), null);
 
 // 4. Delete removes exactly that row.
@@ -150,7 +159,6 @@ assert.ok((await listContacts()).some((c) => c.id === "q1"), "saved after 429 re
 console.log(`Retry-on-429 test passed (${((Date.now() - t0) / 1000).toFixed(1)}s).`);
 
 // 11. Readable, renamed and reordered headers still map to the right columns.
-const { headerKey } = await import("../src/lib/server/sheet");
 assert.equal(headerKey("First name"), "first_name");
 assert.equal(headerKey("Event / place met"), "event");
 assert.equal(headerKey(" LinkedIn "), "linkedin");
@@ -200,7 +208,7 @@ assert.ok((await listContacts()).some((c) => c.id === "t1"), "found again after 
 console.log("Title row tests passed.");
 
 // 15a. Headers renamed to anything: columns are recognised by their marker, not the header text.
-const hdr15: string[] = contacts.rows.find((r) => r.includes("salutation"))!;
+const hdr15: string[] = contacts.rows.find(isHeader)!;
 const companyCol = hdr15.findIndex((v) => headerKey(v) === "company");
 hdr15[companyCol] = "Organisation";
 hdr15[hdr15.findIndex((v) => headerKey(v) === "id")] = "Card ref";
@@ -253,8 +261,8 @@ console.log("Delete and concurrent edit tests passed.");
 
 // 18. Rows with an earlier status label ("To contact", "In conversation") get the current one.
 const tab18 = ops.tab("Contacts");
-const hdr18: string[] = tab18.rows.find((r: string[]) => r.includes("status"))!;
-const statusCol18 = hdr18.indexOf("status");
+const hdr18: string[] = tab18.rows.find(isHeader)!;
+const statusCol18 = colOf(hdr18, "status");
 const rowX2 = tab18.rows.find((r: string[]) => r.includes("x2"))!;
 const rowX3 = tab18.rows.find((r: string[]) => r.includes("x3"))!;
 rowX2[statusCol18] = "To contact";
@@ -297,7 +305,7 @@ li = (await listContacts()).find((c) => c.id === "li1")!;
 assert.equal(li.linkedin_search, "", "cleared once a real LinkedIn URL is known");
 await appendContact(row("li2", { first_name: "Old", last_name: "Row" })); // saved before this column existed
 const tab20 = ops.tab("Contacts");
-const searchCol20 = tab20.rows.find((r: string[]) => r.includes("linkedin_search"))!.indexOf("linkedin_search");
+const searchCol20 = colOf(tab20.rows.find(isHeader)!, "linkedin_search");
 assert.match((await listContacts()).find((c) => c.id === "li2")!.linkedin_search, /keywords=Old%20Row$/);
 assert.match(tab20.rows.find((r: string[]) => r.includes("li2"))![searchCol20], /keywords=Old%20Row$/, "written to the Sheet");
 console.log("LinkedIn search link tests passed.");

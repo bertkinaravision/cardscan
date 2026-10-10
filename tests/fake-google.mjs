@@ -19,6 +19,7 @@ export function reset() {
     uploadStatus: null, uploadCount: 0,
     driveDeleteStatus: null,
     refreshStatus: null, // user token refresh (grant_type=refresh_token)
+    rejectRequest: null, // a batchUpdate containing this request type (e.g. "addBanding") answers 400
     gemini: [], // queue of answers: {status, message} | {text} | {raw} | {delayMs, text}; empty = a good card
     geminiDefault: null,
   };
@@ -139,6 +140,7 @@ const ok = (text) => ({ candidates: [{ content: { role: "model", parts: [{ text 
 
 function applyRequest(r) {
   const s = fake.state;
+  fake.log.push(`req:${Object.keys(r)[0]}`);
   if (r.addSheet) {
     const title = r.addSheet.properties.title;
     const tab = { title, sheetId: s.nextSheet++, rows: [] };
@@ -229,6 +231,8 @@ export function install() {
     .reply(async (_uri, body) => {
       fake.log.push("sheets:batchUpdate");
       await wait(fake.faults.sheetsDelayMs);
+      if (fake.faults.rejectRequest && body.requests.some((r) => r[fake.faults.rejectRequest]))
+        return gErr(400, `Invalid requests[0].${fake.faults.rejectRequest}: rejected by the test`);
       const dup = body.requests.find((r) => r.addSheet && fake.state.tabs.some((t) => t.title === r.addSheet.properties.title));
       if (dup) return gErr(400, `Invalid requests[0].addSheet: A sheet with the name "${dup.addSheet.properties.title}" already exists.`);
       return [200, { replies: body.requests.map(applyRequest) }];

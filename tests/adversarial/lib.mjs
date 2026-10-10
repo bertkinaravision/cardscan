@@ -65,3 +65,9 @@ export const contacts = async (c) => {
   const res = await fetch(`${BASE}/api/contacts`, { headers: { cookie: c } });
   return { status: res.status, body: await res.json().catch(() => null) };
 };
+
+// Column of one of the app's fields in a header row (headers are readable labels once the app has
+// formatted the tab, e.g. "First name" for first_name).
+const squash = (h) => String(h).toLowerCase().replace(/[^a-z0-9]+/g, "");
+const LABELS = { id: "ID", first_name: "First name", company: "Company", status: "Status", linkedin_search: "LinkedIn search" };
+export const col = (header, key) => header.findIndex((h) => squash(h) === squash(key) || squash(h) === squash(LABELS[key] ?? key));

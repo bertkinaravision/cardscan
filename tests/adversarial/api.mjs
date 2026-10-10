@@ -2,7 +2,7 @@
 // Run: node tests/adversarial/api.mjs [filter]      Writes results to tests/adversarial/results-api.json
 import { spawn } from "node:child_process";
 import { writeFileSync } from "node:fs";
-import { BASE, JPEG, contacts, cookie, emptyContact, extract, fake, record, results, save } from "./lib.mjs";
+import { BASE, JPEG, col, contacts, cookie, emptyContact, extract, fake, record, results, save } from "./lib.mjs";
 
 const only = process.argv[2];
 const tests = [];
@@ -360,6 +360,15 @@ test("NET-11", "Delete with expired, unrefreshable token", async () => {
 
 // ---------- Sheet state (things people do to the Sheet; done through the fake so metadata moves as in Google) ----------
 const names = async (c) => (await contacts(c)).body?.contacts?.map((x) => x.first_name).sort().join(",");
+test("ST-10", "Google rejects the tab formatting", async () => {
+  await fake.set({ faults: { rejectRequest: "addBanding" } });
+  const r = await save(await cookie(), { contact: emptyContact({ first_name: "Styled" }) });
+  const list = await contacts(await cookie());
+  const st = await fake.state();
+  const styled = st.meta.some((m) => m.metadataKey === "cardscan_style");
+  record("ST-10", "Formatting request rejected by Google", "contact still saved and listed; formatting not marked done",
+    `save ${r.status}, listed ${list.body?.contacts?.length}, marked done: ${styled}`, r.status === 200 && list.body?.contacts?.length === 1 && !styled);
+});
 test("ST-1", "Empty spreadsheet (no Contacts tab)", async () => {
   const r = await save(await cookie());
   const st = await fake.state();
@@ -396,14 +405,14 @@ test("ST-3", "Title row inserted above the headers", async () => {
   const r = (await fake.state()).tabs.find((t) => t.title === "Contacts").rows;
   record("ST-3", "Someone adds a title row (and a blank row) above the header row", "contacts still shown, title kept, new row under the headers",
     `shown: ${shown}; after a save: ${after}; row 1: ${short(r[0])}; row 3 starts: ${short(r[2].slice(0, 2))}`,
-    shown === "Alice,Bob" && s.status === 200 && after === "Alice,Bob,Cara" && r[0].join() === "Kinara contacts 2026" && r[2][0] === "id");
+    shown === "Alice,Bob" && s.status === 200 && after === "Alice,Bob,Cara" && r[0].join() === "Kinara contacts 2026" && col([r[2][0]], "id") === 0);
 });
 test("ST-4", "Header renamed to an unknown name", async () => {
   const c = await cookie();
   await save(c, { contact: emptyContact({ first_name: "A", company: "Acme" }) });
   const h = (await rows())[0];
-  await fake.op("setCell", "Contacts", 0, h.indexOf("company"), "Organisation");
-  await fake.op("setCell", "Contacts", 0, h.indexOf("first_name"), "Given name");
+  await fake.op("setCell", "Contacts", 0, col(h, "company"), "Organisation");
+  await fake.op("setCell", "Contacts", 0, col(h, "first_name"), "Given name");
   const got = (await contacts(c)).body?.contacts?.[0];
   await save(c, { contact: emptyContact({ first_name: "B", company: "Beta" }) });
   const after = (await rows())[0];
@@ -416,8 +425,8 @@ test("ST-5", "Columns moved", async () => {
   const c = await cookie();
   await seed(c, ["Alice"]);
   const h = (await rows())[0];
-  await fake.op("moveColumn", "Contacts", h.indexOf("first_name"), 0);
-  await fake.op("moveColumn", "Contacts", h.indexOf("status"), 25);
+  await fake.op("moveColumn", "Contacts", col(h, "first_name"), 0);
+  await fake.op("moveColumn", "Contacts", col(h, "status"), 25);
   const id = (await contacts(c)).body.contacts[0].id;
   await patch(c, id, { status: "Closed" });
   const got = (await contacts(c)).body.contacts[0];
@@ -443,8 +452,8 @@ test("ST-7", "Blank rows between contacts", async () => {
   const r = (await fake.state()).tabs.find((t) => t.title === "Contacts").rows;
   const got = (await contacts(c)).body.contacts.find((x) => x.id === b);
   record("ST-7", "Blank rows inserted between contacts", "edit lands on the right row, new contact added at the bottom",
-    `${p.status}; B.notes="${got.notes}"; save ${s.status}; last row is C: ${r[r.length - 1][r[0].indexOf("first_name")] === "C"}`,
-    got.notes === "after blank rows" && r[r.length - 1][r[0].indexOf("first_name")] === "C");
+    `${p.status}; B.notes="${got.notes}"; save ${s.status}; last row is C: ${r[r.length - 1][col(r[0], "first_name")] === "C"}`,
+    got.notes === "after blank rows" && r[r.length - 1][col(r[0], "first_name")] === "C");
 });
 test("ST-8", "Contact deleted in the Sheet, then edited in the app", async () => {
   const c = await cookie();
@@ -457,7 +466,13 @@ test("ST-9", "1000 contacts", async () => {
   const c = await cookie();
   await seed(c, ["warm-up"]);
   const h = (await rows())[0];
-  const bulk = [...Array(1000).keys()].map((i) => h.map((k) => (k === "id" ? `bulk-${i}` : k === "first_name" ? `Person ${i}` : k === "status" ? "New" : "")));
+  const bulk = [...Array(1000).keys()].map((i) => {
+    const r = h.map(() => "");
+    r[col(h, "id")] = `bulk-${i}`;
+    r[col(h, "first_name")] = `Person ${i}`;
+    r[col(h, "status")] = "New";
+    return r;
+  });
   await fake.op("insertRows", "Contacts", 2, 1000, bulk);
   let t = Date.now();
   const r = await contacts(c);

@@ -2,6 +2,7 @@ import "server-only";
 import { CONTACT_TYPES, FIELD_LABELS, linkedinSearchUrl, NEXT_ACTIONS, RENAMED_STATUSES, SHEET_COLUMNS, STATUSES, type ContactRow, type SheetColumn } from "@/lib/fields";
 import { owners, requireEnv } from "./env";
 import { explainGoogleError, sheetsClient } from "./google";
+import { readableHeaders, styleRequests } from "./sheet-style";
 
 const tabName = () => process.env.SHEET_TAB || "Contacts";
 // For .catch on Sheets calls: turns Google's error into a setup hint a person can act on.
@@ -53,6 +54,8 @@ const setupVersion = () => (owners().length ? `${SETUP_VERSION};owners=${owners(
 const TAB_KEY = "cardscan_tab";
 const HEADER_KEY = "cardscan_header";
 const COLUMN_KEY = "cardscan_column";
+// On the tab once the app has given it its look (see sheet-style.ts).
+const STYLE_KEY = "cardscan_style";
 const isColumn = (v: unknown): v is SheetColumn => (SHEET_COLUMNS as readonly unknown[]).includes(v);
 // A request creating one of those markers.
 const marker = (metadataKey: string, metadataValue: string, location: object) => ({
@@ -75,10 +78,10 @@ async function ensureSheet(): Promise<SheetInfo> {
   const spreadsheetId = requireEnv("SHEET_ID");
 
   const [meta, search] = await Promise.all([
-    sheets.spreadsheets.get({ spreadsheetId, fields: "sheets.properties(sheetId,title)" }),
+    sheets.spreadsheets.get({ spreadsheetId, fields: "sheets(properties(sheetId,title),bandedRanges(bandedRangeId))" }),
     sheets.spreadsheets.developerMetadata.search({
       spreadsheetId,
-      requestBody: { dataFilters: [SETUP_KEY, TAB_KEY, HEADER_KEY, COLUMN_KEY].map((metadataKey) => ({ developerMetadataLookup: { metadataKey } })) },
+      requestBody: { dataFilters: [SETUP_KEY, TAB_KEY, HEADER_KEY, COLUMN_KEY, STYLE_KEY].map((metadataKey) => ({ developerMetadataLookup: { metadataKey } })) },
     }),
   ]).catch(sheetError);
   const found: Meta[] = (search.data.matchedDeveloperMetadata ?? []).map((m) => m.developerMetadata ?? {});
@@ -118,7 +121,42 @@ async function ensureSheet(): Promise<SheetInfo> {
     requests.push(...formattingRequests(sheetId, headerRow, keys, width, setupMeta));
   }
   if (requests.length > 0) await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests } });
+
+  const styled = found.some((m) => m.metadataKey === STYLE_KEY && m.location?.sheetId === sheetId);
+  if (!styled) {
+    const hasBanding = !!meta.data.sheets?.find((s) => s.properties?.sheetId === sheetId)?.bandedRanges?.length;
+    await styleTab(sheets, spreadsheetId, { sheetId, title, headerRow, keys }, [...existing, ...missing], hasBanding);
+  }
   return { sheetId, title, headerRow, keys };
+}
+
+// Gives the tab its look once: readable header names, then the formatting and the marker that
+// says it's done, in one request. A failure is only logged (saving must not depend on it) and
+// tried again at most every 10 minutes, so it can't use up Google's quota during a busy batch.
+let styleFailedAt = 0;
+async function styleTab(sheets: Sheets, spreadsheetId: string, info: SheetInfo, headers: string[], hasBanding: boolean) {
+  if (Date.now() - styleFailedAt < 10 * 60_000) return;
+  try {
+    const labels = readableHeaders(info.keys, headers);
+    if (labels.length > 0) {
+      await sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          valueInputOption: "RAW",
+          data: labels.map(({ col, label }) => ({ range: `${quoted(info.title)}!${columnLetter(col)}${info.headerRow}`, values: [[label]] })),
+        },
+      });
+    }
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [...styleRequests(info.sheetId, info.headerRow, info.keys, hasBanding), marker(STYLE_KEY, "1", { sheetId: info.sheetId })],
+      },
+    });
+  } catch (err) {
+    styleFailedAt = Date.now();
+    console.error("[sheet] could not format the tab:", err instanceof Error ? err.message : err);
+  }
 }
 
 // The tab: the one the marker is on (so it may be renamed), else the one named SHEET_TAB / "Contacts".
