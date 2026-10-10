@@ -10,5 +10,9 @@ export async function readImage(form: FormData, name: string): Promise<Buffer | 
   if (!(file instanceof Blob)) throw new HttpError(400, `${name} is not a file.`);
   if (file.type !== "image/jpeg") throw new HttpError(400, `${name} must be a JPEG.`);
   if (file.size > MAX_BYTES) throw new HttpError(413, `${name} is too large.`);
-  return Buffer.from(await file.arrayBuffer());
+  const bytes = Buffer.from(await file.arrayBuffer());
+  if (bytes.length === 0) throw new HttpError(400, `The ${name} photo is empty. Remove this card and scan it again.`);
+  // Every JPEG starts with FF D8 FF; the declared type alone is whatever the sender says.
+  if (bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) throw new HttpError(400, `${name} must be a JPEG.`);
+  return bytes;
 }
